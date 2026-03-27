@@ -59,6 +59,7 @@ coverage.xml
 # Riskpredictionmodel-specific ignores
 Riskpredictionmodel/.env.local
 Riskpredictionmodel/.env.*.local
+**/.git_backup_*/
 Riskpredictionmodel/**/*.pem
 Riskpredictionmodel/**/*.key
 Riskpredictionmodel/**/private_key.txt
