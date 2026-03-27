@@ -1,0 +1,14 @@
+{
+  "model_type": "pooled_xgb",
+  "version": "pooled_xgb_20260318_094518",
+  "model_path": "models\\\\production\\\\pooled_xgb_20260318_094518.pkl",
+  "preprocessor_path": "models\\\\production\\\\preprocessor_pooled_xgb_20260318_094518.pkl",
+  "approval_thresholds": {
+    "manual_default": 0.3,
+    "max_accuracy": 0.54,
+    "max_f1": 0.54,
+    "min_cost": 0.4,
+    "fn_cost": 3.0,
+    "fp_cost": 1.0
+  }
+}

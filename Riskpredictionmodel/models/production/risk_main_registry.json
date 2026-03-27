@@ -1,0 +1,434 @@
+
+{
+  "model_family": "risk_main",
+  "active_model_type": "risk_main_xgb",
+  "active_version": "risk_main_xgb_20260319_094014",
+  "models": [
+    {
+      "model_name": "xgboost",
+      "model_type": "risk_main_xgb",
+      "version": "risk_main_xgb_20260319_094014",
+      "status": "champion",
+      "model_path": "models/production/risk_main_xgb_20260319_094014.pkl",
+      "preprocessor_path": "models/production/preprocessor_risk_main_xgb_20260319_094014.pkl",
+      "metrics": {
+        "version": "risk_main_xgb_20260319_094014",
+        "target_delay_days": 30,
+        "model_path": "models/production/risk_main_xgb_20260319_094014.pkl",
+        "preprocessor_path": "models/production/preprocessor_risk_main_xgb_20260319_094014.pkl",
+        "metrics": {
+          "valid": {
+            "roc_auc": 0.8756620945479641,
+            "pr_auc": 0.8070906642467217,
+            "brier": 0.08881774499753944,
+            "log_loss": 0.30781332486941937,
+            "accuracy": 0.8925970873786407,
+            "precision": 0.8256227758007118,
+            "recall": 0.6444444444444445,
+            "f1": 0.7238689547581905,
+            "ks": 0.656383712905452,
+            "calibration_error": 0.0379748595880601
+          },
+          "test": {
+            "roc_auc": 0.9110444476268721,
+            "pr_auc": 0.75602787240754,
+            "brier": 0.10259494181758472,
+            "log_loss": 0.3265140581891832,
+            "accuracy": 0.864602307225258,
+            "precision": 0.434375,
+            "recall": 0.7679558011049724,
+            "f1": 0.5548902195608783,
+            "ks": 0.6641969353221832,
+            "calibration_error": 0.1596819508571119
+          },
+          "thresholds": {
+            "manual_default": 0.3,
+            "max_accuracy": 0.8,
+            "max_f1": 0.58,
+            "recall_floor_best_f1": 0.58,
+            "active": 0.58,
+            "active_strategy": "recall_floor_best_f1",
+            "min_recall_target": 0.6
+          }
+        },
+        "train_profile": {
+          "rows": 10980,
+          "positive_rate": 0.24790528233151185,
+          "feature_count": 323,
+          "actual_label_rate": 0.8525500910746813,
+          "label_quality_mix": {
+            "actual": 9361,
+            "inferred": 1619
+          }
+        },
+        "iv_report_top50": [
+          {
+            "feature": "cust_currency_hist_recent3_delay_rate",
+            "iv": 2.829516501531673
+          },
+          {
+            "feature": "cust_sales_hist_recent3_delay_rate",
+            "iv": 2.8154919132559755
+          },
+          {
+            "feature": "cust_terms_hist_recent3_delay_rate",
+            "iv": 2.8154919132559755
+          },
+          {
+            "feature": "customer_hist_recent3_delay_rate",
+            "iv": 2.8154919132559755
+          },
+          {
+            "feature": "cust_company_hist_recent3_delay_rate",
+            "iv": 2.794789869676171
+          },
+          {
+            "feature": "cust_currency_hist_recent3_avg_delay",
+            "iv": 2.5823626450230632
+          },
+          {
+            "feature": "cust_company_hist_recent3_avg_delay",
+            "iv": 2.5730611750670356
+          },
+          {
+            "feature": "cust_sales_hist_recent3_avg_delay",
+            "iv": 2.570955707018076
+          },
+          {
+            "feature": "customer_hist_recent3_avg_delay",
+            "iv": 2.570955707018076
+          },
+          {
+            "feature": "cust_terms_hist_recent3_avg_delay",
+            "iv": 2.570955707018076
+          },
+          {
+            "feature": "cust_currency_hist_recent5_delay_rate",
+            "iv": 2.482337431387836
+          },
+          {
+            "feature": "cust_terms_hist_recent5_delay_rate",
+            "iv": 2.4686065283914815
+          },
+          {
+            "feature": "customer_hist_recent5_delay_rate",
+            "iv": 2.4686065283914815
+          },
+          {
+            "feature": "cust_sales_hist_recent5_delay_rate",
+            "iv": 2.4686065283914815
+          },
+          {
+            "feature": "cust_company_hist_recent5_delay_rate",
+            "iv": 2.4500638035528506
+          },
+          {
+            "feature": "customer_hist_recent3_delay_rate__x__terms_days",
+            "iv": 2.1960338447364993
+          },
+          {
+            "feature": "cust_sales_hist_recent3_delay_rate__x__days_to_due",
+            "iv": 2.0872380966102972
+          },
+          {
+            "feature": "cust_currency_hist_delay_rate",
+            "iv": 1.3206731231703892
+          },
+          {
+            "feature": "cust_terms_hist_delay_rate",
+            "iv": 1.3029974251776704
+          },
+          {
+            "feature": "customer_hist_delay_rate",
+            "iv": 1.3029974251776704
+          },
+          {
+            "feature": "cust_sales_hist_delay_rate",
+            "iv": 1.3029974251776704
+          },
+          {
+            "feature": "cust_company_hist_delay_rate",
+            "iv": 1.2907421556618983
+          },
+          {
+            "feature": "customer_hist_delay_rate__x__invoice_amount_log",
+            "iv": 1.2002668502738425
+          },
+          {
+            "feature": "cust_company_hist_delay_rate__x__invoice_amount_log",
+            "iv": 1.1879414697210275
+          },
+          {
+            "feature": "severe_aging_share",
+            "iv": 1.1666581095320203
+          },
+          {
+            "feature": "aging_above_90_ratio",
+            "iv": 1.138909649639983
+          },
+          {
+            "feature": "cust_currency_hist_avg_delay",
+            "iv": 1.049234552961476
+          },
+          {
+            "feature": "cust_terms_hist_avg_delay",
+            "iv": 1.0456524609172742
+          },
+          {
+            "feature": "customer_hist_avg_delay",
+            "iv": 1.0456524609172742
+          },
+          {
+            "feature": "cust_sales_hist_avg_delay",
+            "iv": 1.0456524609172742
+          },
+          {
+            "feature": "prior_unpaid_ratio_avg",
+            "iv": 1.0451783074207293
+          },
+          {
+            "feature": "cust_company_hist_avg_delay",
+            "iv": 1.0323545055797427
+          },
+          {
+            "feature": "sales_company_hist_recent3_delay_rate",
+            "iv": 0.9747379613153253
+          },
+          {
+            "feature": "sales_company_hist_delay_rate__x__working_capital_stress",
+            "iv": 0.9743380637956761
+          },
+          {
+            "feature": "sales_company_hist_recent5_delay_rate",
+            "iv": 0.966213682518501
+          },
+          {
+            "feature": "working_capital_stress",
+            "iv": 0.9568684820158964
+          },
+          {
+            "feature": "severity_x_recurring_flag",
+            "iv": 0.8735859126947334
+          },
+          {
+            "feature": "realization_efficiency",
+            "iv": 0.8674654232959924
+          },
+          {
+            "feature": "aging_total_to_invoice_ratio",
+            "iv": 0.8583465443489231
+          },
+          {
+            "feature": "sales_hist_recent5_delay_rate",
+            "iv": 0.8458902856349209
+          },
+          {
+            "feature": "prior_aging_total_max",
+            "iv": 0.8271831664350179
+          },
+          {
+            "feature": "prior_installment_count_avg",
+            "iv": 0.8200877588323907
+          },
+          {
+            "feature": "sales_hist_recent3_delay_rate",
+            "iv": 0.8141180810146733
+          },
+          {
+            "feature": "company_hist_recent3_delay_rate",
+            "iv": 0.770637079373975
+          },
+          {
+            "feature": "company_hist_recent5_delay_rate",
+            "iv": 0.6675279641875143
+          },
+          {
+            "feature": "doc_hist_recent3_delay_rate",
+            "iv": 0.6644209495996385
+          },
+          {
+            "feature": "sales_company_hist_recent3_avg_delay",
+            "iv": 0.6441160881619609
+          },
+          {
+            "feature": "terms_hist_recent3_delay_rate",
+            "iv": 0.6241297478371668
+          },
+          {
+            "feature": "route_company_hist_recent3_delay_rate",
+            "iv": 0.6228009914061768
+          },
+          {
+            "feature": "terms_hist_recent5_delay_rate",
+            "iv": 0.6193796981650661
+          }
+        ],
+        "feature_sample": [
+          "terms_days",
+          "currency",
+          "invoice_amount",
+          "gross_amount",
+          "sales_owner",
+          "document_type",
+          "shipment_mode",
+          "account_type",
+          "inco_terms",
+          "commodity",
+          "paid_amount",
+          "tds_amount",
+          "ytd_exposure",
+          "aging_not_due",
+          "aging_0_15",
+          "aging_16_30",
+          "aging_31_45",
+          "aging_46_60",
+          "aging_60_90",
+          "aging_above_90",
+          "gross_weight",
+          "chargeable_weight",
+          "volume_weight",
+          "container_count",
+          "origin_city",
+          "origin_state",
+          "origin_country",
+          "destination_city",
+          "destination_state",
+          "destination_country",
+          "customer_account_type",
+          "customer_type",
+          "customer_category",
+          "clearance_status",
+          "gatein_status",
+          "tracking_status",
+          "tracking_location",
+          "source_system",
+          "company",
+          "execution_gap_days",
+          "days_to_due",
+          "customer_age_days",
+          "weight_discrepancy",
+          "aging_total",
+          "unpaid_amount",
+          "gross_to_invoice_ratio",
+          "paid_to_invoice_ratio",
+          "tds_to_invoice_ratio",
+          "exposure_to_invoice_ratio",
+          "aging_total_to_invoice_ratio",
+          "invoice_amount_log",
+          "gross_amount_log",
+          "paid_amount_log",
+          "ytd_exposure_log",
+          "aging_total_log",
+          "gross_weight_log",
+          "chargeable_weight_log",
+          "volume_weight_log",
+          "unpaid_to_invoice_ratio",
+          "amount_gap",
+          "amount_gap_ratio",
+          "cash_gap",
+          "cash_gap_ratio",
+          "exposure_gap",
+          "exposure_gap_ratio",
+          "aging_not_due_ratio",
+          "aging_0_15_ratio",
+          "aging_16_30_ratio",
+          "aging_31_45_ratio",
+          "aging_46_60_ratio",
+          "aging_60_90_ratio",
+          "aging_above_90_ratio",
+          "mild_aging_share",
+          "severe_aging_share",
+          "receivable_pressure_index",
+          "working_capital_stress",
+          "realization_efficiency",
+          "weight_density_ratio",
+          "chargeable_to_gross_ratio",
+          "container_intensity",
+          "execution_to_due_gap",
+          "is_iata_document",
+          "is_zipa_company",
+          "has_paid_amount",
+          "has_ytd_exposure",
+          "has_execution_gap",
+          "has_tracking_status",
+          "has_clearance_signal",
+          "has_gatein_signal",
+          "is_partial_payment",
+          "has_multiple_installments",
+          "is_air_mode",
+          "is_ocean_mode",
+          "invoice_year",
+          "invoice_quarter",
+          "invoice_month",
+          "invoice_week",
+          "invoice_day",
+          "invoice_weekday",
+          "invoice_day_of_year",
+          "invoice_is_month_start",
+          "invoice_is_month_end",
+          "invoice_is_quarter_start",
+          "invoice_is_quarter_end",
+          "invoice_is_weekend",
+          "invoice_fortnight",
+          "invoice_month_sin",
+          "invoice_month_cos",
+          "invoice_weekday_sin",
+          "invoice_weekday_cos",
+          "due_year",
+          "due_quarter",
+          "due_month",
+          "due_week",
+          "due_day",
+          "due_weekday",
+          "due_day_of_year",
+          "due_is_month_start",
+          "due_is_month_end",
+          "due_is_quarter_start",
+          "due_is_quarter_end",
+          "due_is_weekend",
+          "due_fortnight",
+          "due_month_sin",
+          "due_month_cos",
+          "due_weekday_sin",
+          "due_weekday_cos",
+          "execution_year",
+          "execution_quarter",
+          "execution_month",
+          "execution_week",
+          "execution_day",
+          "execution_weekday",
+          "execution_day_of_year",
+          "execution_is_month_start",
+          "execution_is_month_end",
+          "execution_is_quarter_start",
+          "execution_is_quarter_end",
+          "execution_is_weekend",
+          "execution_fortnight",
+          "execution_month_sin",
+          "execution_month_cos",
+          "execution_weekday_sin",
+          "execution_weekday_cos",
+          "prior_invoice_count",
+          "prior_paid_invoice_count",
+          "prior_delay_rate",
+          "prior_severe_delay_rate",
+          "prior_avg_delay_days",
+          "prior_max_delay_days"
+        ],
+        "acceptance": {
+          "approved": true,
+          "status": "ready_for_promotion",
+          "gatechecks": {
+            "row_count_ge_1000": true,
+            "feature_count_ge_100": true,
+            "test_roc_auc_ge_0_65": true,
+            "test_pr_auc_ge_0_65": true,
+            "test_recall_ge_0_60": true
+          }
+        }
+      },
+      "feature_count": 323,
+      "created_at": "2026-03-19T09:40:14.731153+00:00"
+    }
+  ]
+}

@@ -1,0 +1,579 @@
+<mxfile host="65bd71144e">
+    <diagram id="YpbAD583urfprHOJXM-O" name="Page-1">
+        <mxGraphModel dx="3712" dy="246" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3200" pageHeight="4500" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="L1" value="① CLIENT" style="swimlane;startSize=28;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="40" width="2900" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="L1_react" value="&lt;b&gt;React Dashboard&lt;/b&gt;&#xa;credit-risk-dashboard/ (Vite)" style="rounded=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="L1" vertex="1">
+                    <mxGeometry x="80" y="32" width="220" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L1_ext" value="&lt;b&gt;External API Client&lt;/b&gt;&#xa;Any HTTP consumer" style="rounded=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;" parent="L1" vertex="1">
+                    <mxGeometry x="360" y="32" width="220" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="cycle_legend" value="&lt;div style=&quot;text-align:left;&quot;&gt;&lt;b&gt;Cycle Guide&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#1E88E5&quot;&gt;&lt;b&gt;A&lt;/b&gt;&lt;/font&gt; /score-all: A1 request -&gt; A2 snapshot page -&gt; A3 response&lt;br/&gt;&lt;font color=&quot;#2E7D32&quot;&gt;&lt;b&gt;B&lt;/b&gt;&lt;/font&gt; /score: B1 request -&gt; B2 history load -&gt; B3 enrich -&gt; B4 response merge&lt;br/&gt;&lt;font color=&quot;#EF6C00&quot;&gt;&lt;b&gt;C&lt;/b&gt;&lt;/font&gt; /score-customer: C1 request -&gt; C2 customer frame -&gt; C3 payload&lt;br/&gt;&lt;font color=&quot;#616161&quot;&gt;&lt;b&gt;D&lt;/b&gt;&lt;/font&gt; /health: D1 route -&gt; status response&lt;br/&gt;&lt;font color=&quot;#C62828&quot;&gt;&lt;b&gt;E&lt;/b&gt;&lt;/font&gt; refresh cycle: E1 trigger -&gt; E2 rebuild -&gt; E3 worker loop&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=left;verticalAlign=top;" parent="L1" vertex="1">
+                    <mxGeometry x="650" y="16" width="2140" height="68" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2" value="② API GATEWAY  ·  FastAPI  ·  api/scoring_api.py" style="swimlane;startSize=28;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="220" width="2900" height="260" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_auth_grp" value="Auth &amp; Config" style="swimlane;startSize=20;fillColor=#eaf5e9;strokeColor=#82b366;fontSize=10;fontStyle=1;" parent="L2" vertex="1">
+                    <mxGeometry x="20" y="38" width="420" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_apikey" value="&lt;b&gt;require_api_key&lt;/b&gt;&#xa;api/auth.py&#xa;Validates X-API-Key header" style="rounded=1;fillColor=#fff;strokeColor=#82b366;fontSize=10;" parent="L2_auth_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="195" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_settings" value="&lt;b&gt;ApiSettings&lt;/b&gt;&#xa;api/settings.py&#xa;TTL, thresholds, CORS config" style="rounded=1;fillColor=#fff;strokeColor=#82b366;fontSize=10;" parent="L2_auth_grp" vertex="1">
+                    <mxGeometry x="217" y="28" width="195" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_models" value="&lt;b&gt;ScoreRequest / CustomerScoreRequest&lt;/b&gt;&#xa;api/models.py  (Pydantic)&#xa;Request schema validation" style="rounded=1;fillColor=#fff;strokeColor=#82b366;fontSize=10;" parent="L2_auth_grp" vertex="1">
+                    <mxGeometry x="14" y="96" width="398" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_routes_grp" value="Route Handlers" style="swimlane;startSize=20;fillColor=#eaf5e9;strokeColor=#82b366;fontSize=10;fontStyle=1;" parent="L2" vertex="1">
+                    <mxGeometry x="460" y="38" width="880" height="200" as="geometry">
+                        <mxRectangle x="460" y="38" width="110" height="30" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="L2_score" value="&lt;b&gt;[B1] POST /score/{segment}&lt;/b&gt;&#xa;score() - scoring_api.py:144&#xa;Single invoice - live scoring" style="rounded=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontSize=10;" parent="L2_routes_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="260" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_score_all" value="&lt;b&gt;[A1] GET /score-all/{segment}&lt;/b&gt;&#xa;score_all() - scoring_api.py:171&#xa;Paginated bulk from snapshot" style="rounded=1;fillColor=#E3F2FD;strokeColor=#1E88E5;fontSize=10;" parent="L2_routes_grp" vertex="1">
+                    <mxGeometry x="296" y="28" width="260" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_score_cust" value="&lt;b&gt;[C1] POST /score-customer/{segment}&lt;/b&gt;&#xa;score_customer() - scoring_api.py:215&#xa;Customer drilldown" style="rounded=1;fillColor=#FFF3E0;strokeColor=#EF6C00;fontSize=10;" parent="L2_routes_grp" vertex="1">
+                    <mxGeometry x="578" y="28" width="260" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_cache_ref" value="&lt;b&gt;[E1] POST /cache/refresh&lt;/b&gt;&#xa;refresh_cache() - scoring_api.py:256&#xa;Triggers full cache rebuild" style="rounded=1;fillColor=#FFEBEE;strokeColor=#C62828;fontSize=10;" parent="L2_routes_grp" vertex="1">
+                    <mxGeometry x="14" y="102" width="260" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_health" value="&lt;b&gt;[D1] GET /health&lt;/b&gt;&#xa;health() - scoring_api.py:274&#xa;Mongo + model + cache status" style="rounded=1;fillColor=#F5F5F5;strokeColor=#616161;fontSize=10;" parent="L2_routes_grp" vertex="1">
+                    <mxGeometry x="296" y="102" width="260" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_lifespan" value="&lt;b&gt;[E0] lifespan()&lt;/b&gt; - scoring_api.py:81&#xa;Startup checks + cache.start()&#xa;Shutdown: cache.stop()" style="rounded=1;fillColor=#FFEBEE;strokeColor=#C62828;fontSize=10;" parent="L2_routes_grp" vertex="1">
+                    <mxGeometry x="578" y="102" width="260" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_helpers_grp" value="Shared Helpers" style="swimlane;startSize=20;fillColor=#eaf5e9;strokeColor=#82b366;fontSize=10;fontStyle=1;" parent="L2" vertex="1">
+                    <mxGeometry x="1360" y="38" width="1480" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_bsf" value="&lt;b&gt;build_scored_frame()&lt;/b&gt;&#xa;scoring_api.py:112&#xa;Fetch → filter → enrich → score" style="rounded=1;fillColor=#d5f0d0;strokeColor=#82b366;fontStyle=1;fontSize=10;" parent="L2_helpers_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="260" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_bsd" value="&lt;b&gt;build_scored_dataset()&lt;/b&gt;&#xa;scoring_api.py:136&#xa;build_scored_frame → normalize" style="rounded=1;fillColor=#fff;strokeColor=#82b366;strokeDasharray=4;fontSize=10;" parent="L2_helpers_grp" vertex="1">
+                    <mxGeometry x="290" y="28" width="260" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_prep_hist" value="&lt;b&gt;_prepare_history_frame()&lt;/b&gt;&#xa;scoring_api.py:102&#xa;→ cache.load_full_dataset()" style="rounded=1;fillColor=#fff;strokeColor=#82b366;strokeDasharray=4;fontSize=10;" parent="L2_helpers_grp" vertex="1">
+                    <mxGeometry x="566" y="28" width="260" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_enrich" value="&lt;b&gt;_enrich_with_customer_history()&lt;/b&gt;&#xa;scoring_api.py:107&#xa;→ cache.enrich_with_customer_history()" style="rounded=1;fillColor=#fff;strokeColor=#82b366;strokeDasharray=4;fontSize=10;" parent="L2_helpers_grp" vertex="1">
+                    <mxGeometry x="842" y="28" width="280" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_threshold" value="&lt;b&gt;_resolve_threshold_override()&lt;/b&gt;&#xa;scoring_api.py:41&#xa;Per-segment threshold from settings" style="rounded=1;fillColor=#fff;strokeColor=#82b366;strokeDasharray=4;fontSize=10;" parent="L2_helpers_grp" vertex="1">
+                    <mxGeometry x="1138" y="28" width="280" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L2_startup" value="&lt;b&gt;[D0] _startup_checks()&lt;/b&gt; / &lt;b&gt;_check_mongo_live()&lt;/b&gt;&#xa;scoring_api.py:61/71&#xa;Validates env + pings Mongo" style="rounded=1;fillColor=#F5F5F5;strokeColor=#616161;strokeDasharray=4;fontSize=10;" parent="L2_helpers_grp" vertex="1">
+                    <mxGeometry x="14" y="102" width="400" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L3" value="③ RESPONSE BUILDER  ·  api/response_builder.py" style="swimlane;startSize=28;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="580" width="2900" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="L3_resp_raw" value="&lt;b&gt;[B4] response_from_raw()&lt;/b&gt;&#xa;:332  Merges raw+scored df" style="rounded=1;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=10;" parent="L3" vertex="1">
+                    <mxGeometry x="30" y="36" width="220" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L3_shape" value="&lt;b&gt;_shape_response_frame()&lt;/b&gt;&#xa;:149  Lean column selection" style="rounded=1;fillColor=#fff;strokeColor=#d6b656;strokeDasharray=4;fontSize=10;" parent="L3" vertex="1">
+                    <mxGeometry x="270" y="36" width="220" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L3_summary" value="&lt;b&gt;_build_scored_summary()&lt;/b&gt;&#xa;:167  Portfolio aggregate stats" style="rounded=1;fillColor=#fff;strokeColor=#d6b656;strokeDasharray=4;fontSize=10;" parent="L3" vertex="1">
+                    <mxGeometry x="510" y="36" width="220" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L3_cust_pay" value="&lt;b&gt;[C3] _build_customer_summary_payload()&lt;/b&gt;&#xa;:245  Customer drilldown response" style="rounded=1;fillColor=#FFF3E0;strokeColor=#EF6C00;strokeDasharray=4;fontSize=10;" parent="L3" vertex="1">
+                    <mxGeometry x="750" y="36" width="270" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L3_top_feat" value="&lt;b&gt;_aggregate_customer_top_features()&lt;/b&gt;&#xa;:197  SHAP top features per customer" style="rounded=1;fillColor=#fff;strokeColor=#d6b656;strokeDasharray=4;fontSize=10;" parent="L3" vertex="1">
+                    <mxGeometry x="1040" y="36" width="270" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L3_normalize" value="&lt;b&gt;_normalize_response_records()&lt;/b&gt;&#xa;:39  df rows → list of safe dicts" style="rounded=1;fillColor=#fff;strokeColor=#d6b656;strokeDasharray=4;fontSize=10;" parent="L3" vertex="1">
+                    <mxGeometry x="1330" y="36" width="270" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L3_derive" value="&lt;b&gt;_derive_contract_fields()&lt;/b&gt;&#xa;:95  Adds display-contract cols" style="rounded=1;fillColor=#fff;strokeColor=#d6b656;strokeDasharray=4;fontSize=10;" parent="L3" vertex="1">
+                    <mxGeometry x="1620" y="36" width="240" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L3_filter" value="&lt;b&gt;_filter_customer_rows()&lt;/b&gt;&#xa;:44  Filter by customer_id" style="rounded=1;fillColor=#fff;strokeColor=#d6b656;strokeDasharray=4;fontSize=10;" parent="L3" vertex="1">
+                    <mxGeometry x="1880" y="36" width="240" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4" value="④ CACHE &amp; SNAPSHOT ENGINE  ·  ApiCache  ·  api/cache.py" style="swimlane;startSize=28;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="820" width="2900" height="260" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_load_grp" value="Dataset Loading" style="swimlane;startSize=20;fillColor=#fce8e6;strokeColor=#b85450;fontSize=10;fontStyle=1;" parent="L4" vertex="1">
+                    <mxGeometry x="20" y="38" width="540" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_init" value="&lt;b&gt;ApiCache.__init__()&lt;/b&gt;&#xa;cache.py:50&#xa;Locks, TTLs, worker thread init" style="rounded=1;fillColor=#fff;strokeColor=#b85450;fontStyle=1;fontSize=10;" parent="L4_load_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="250" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_load_full" value="&lt;b&gt;load_full_dataset()&lt;/b&gt;&#xa;cache.py:132&#xa;TTL-guarded → fetch_production_risk_main_dataset()" style="rounded=1;fillColor=#fff;strokeColor=#b85450;fontStyle=1;fontSize=10;" parent="L4_load_grp" vertex="1">
+                    <mxGeometry x="278" y="28" width="250" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_prep_snap" value="&lt;b&gt;_prepare_snapshot_frame()&lt;/b&gt;&#xa;cache.py:91&#xa;Adds __snapshot_segment / ts / sort cols" style="rounded=1;fillColor=#fff;strokeColor=#b85450;strokeDasharray=4;fontSize=10;" parent="L4_load_grp" vertex="1">
+                    <mxGeometry x="14" y="100" width="514" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_snap_grp" value="Snapshot Management" style="swimlane;startSize=20;fillColor=#fce8e6;strokeColor=#b85450;fontSize=10;fontStyle=1;" parent="L4" vertex="1">
+                    <mxGeometry x="580" y="38" width="540" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_build_snap" value="&lt;b&gt;_build_scored_snapshot()&lt;/b&gt;&#xa;cache.py:221&#xa;Score all segments → snapshot dict" style="rounded=1;fillColor=#fff;strokeColor=#b85450;strokeDasharray=4;fontStyle=1;fontSize=10;" parent="L4_snap_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="250" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_load_snap" value="&lt;b&gt;load_scored_snapshot()&lt;/b&gt;&#xa;cache.py:317&#xa;Returns current or builds new" style="rounded=1;fillColor=#fff;strokeColor=#b85450;fontStyle=1;fontSize=10;" parent="L4_snap_grp" vertex="1">
+                    <mxGeometry x="278" y="28" width="250" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_prune" value="&lt;b&gt;_prune_previous_snapshot_locked()&lt;/b&gt;&#xa;cache.py:309  TTL prunes old snapshot" style="rounded=1;fillColor=#fff;strokeColor=#b85450;strokeDasharray=4;fontSize=10;" parent="L4_snap_grp" vertex="1">
+                    <mxGeometry x="14" y="100" width="514" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_page_grp" value="Paging &amp; Customer Lookup" style="swimlane;startSize=20;fillColor=#fce8e6;strokeColor=#b85450;fontSize=10;fontStyle=1;" parent="L4" vertex="1">
+                    <mxGeometry x="1140" y="38" width="540" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_scored_page" value="&lt;b&gt;[A2] get_scored_page()&lt;/b&gt;&#xa;cache.py:376&#xa;Cursor-paginated page from snapshot" style="rounded=1;fillColor=#E3F2FD;strokeColor=#1E88E5;fontStyle=1;fontSize=10;" parent="L4_page_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="250" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_cust_frame" value="&lt;b&gt;get_snapshot_customer_frame()&lt;/b&gt;&#xa;cache.py:453&#xa;Rows for one customer from snapshot" style="rounded=1;fillColor=#fff;strokeColor=#b85450;fontStyle=1;fontSize=10;" parent="L4_page_grp" vertex="1">
+                    <mxGeometry x="278" y="28" width="250" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_cursor" value="&lt;b&gt;_encode_cursor() / _decode_cursor()&lt;/b&gt;&#xa;cache.py:202/206  Base64 JSON opaque cursor" style="rounded=1;fillColor=#fff;strokeColor=#b85450;strokeDasharray=4;fontSize=10;" parent="L4_page_grp" vertex="1">
+                    <mxGeometry x="14" y="100" width="514" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_hist_grp" value="Customer History Cache" style="swimlane;startSize=20;fillColor=#fce8e6;strokeColor=#b85450;fontSize=10;fontStyle=1;" parent="L4" vertex="1">
+                    <mxGeometry x="1700" y="38" width="540" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_fetch_agg" value="&lt;b&gt;fetch_customer_aggregates()&lt;/b&gt;&#xa;cache.py:170&#xa;TTL-guarded customer history" style="rounded=1;fillColor=#fff;strokeColor=#b85450;fontStyle=1;fontSize=10;" parent="L4_hist_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="250" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_enrich_hist" value="&lt;b&gt;enrich_with_customer_history()&lt;/b&gt;&#xa;cache.py:195&#xa;Merges history aggregates into frame" style="rounded=1;fillColor=#fff;strokeColor=#b85450;fontStyle=1;fontSize=10;" parent="L4_hist_grp" vertex="1">
+                    <mxGeometry x="278" y="28" width="250" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_resolve_thr" value="&lt;b&gt;_resolve_threshold()&lt;/b&gt;&#xa;cache.py:216  Per-segment decision threshold" style="rounded=1;fillColor=#fff;strokeColor=#b85450;strokeDasharray=4;fontSize=10;" parent="L4_hist_grp" vertex="1">
+                    <mxGeometry x="14" y="100" width="514" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_worker_grp" value="Background Worker Thread" style="swimlane;startSize=20;fillColor=#fff5d6;strokeColor=#b85450;fontSize=10;fontStyle=1;" parent="L4" vertex="1">
+                    <mxGeometry x="2260" y="38" width="600" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_worker" value="&lt;b&gt;_worker()&lt;/b&gt;&#xa;cache.py:538&#xa;Periodic auto-refresh daemon loop" style="rounded=1;fillColor=#fff5d6;strokeColor=#b85450;strokeDasharray=4;fontStyle=1;fontSize=10;" parent="L4_worker_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="280" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_refresh" value="&lt;b&gt;[E2] refresh()&lt;/b&gt;&#xa;cache.py:475&#xa;load_full + load_scored_snapshot" style="rounded=1;fillColor=#FFEBEE;strokeColor=#C62828;fontStyle=1;fontSize=10;" parent="L4_worker_grp" vertex="1">
+                    <mxGeometry x="308" y="28" width="280" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L4_start_stop" value="&lt;b&gt;start() / stop()&lt;/b&gt;&#xa;cache.py:561/578  Worker lifecycle" style="rounded=1;fillColor=#fff;strokeColor=#b85450;fontSize=10;" parent="L4_worker_grp" vertex="1">
+                    <mxGeometry x="14" y="100" width="574" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="A15" value="E3 worker trigger" style="dashed=1;endArrow=block;html=1;strokeColor=#C62828;strokeWidth=2;fontSize=10;fontColor=#C62828;" parent="L4" target="L4_refresh" edge="1">
+                    <mxGeometry x="-0.0011" relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="2270" y="93"/>
+                            <mxPoint x="2250" y="93"/>
+                            <mxPoint x="2250" y="30"/>
+                            <mxPoint x="590" y="30"/>
+                            <mxPoint x="590" y="250"/>
+                            <mxPoint x="2848" y="250"/>
+                        </Array>
+                        <mxPoint x="2270" y="90" as="sourcePoint"/>
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="L5" value="⑤ DATA PIPELINE  ·  pipeline/" style="swimlane;startSize=28;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="1180" width="2900" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5A" value="5A · Fetch &amp; Canonicalize  (risk_canonical.py)" style="swimlane;startSize=20;fillColor=#f3eef7;strokeColor=#9673a6;fontSize=10;fontStyle=1;" parent="L5" vertex="1">
+                    <mxGeometry x="20" y="38" width="660" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5A_fetch" value="&lt;b&gt;fetch_risk_main_frame()&lt;/b&gt;&#xa;risk_canonical.py:78&#xa;MongoDB projection → flat row list" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;fontStyle=1;fontSize=10;" parent="L5A" vertex="1">
+                    <mxGeometry x="14" y="28" width="295" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5A_canon" value="&lt;b&gt;canonicalize_risk_main_frame()&lt;/b&gt;&#xa;risk_canonical.py:109&#xa;Flatten docs · parse dates · derive delay_days · target · ratios" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;fontStyle=1;fontSize=10;" parent="L5A" vertex="1">
+                    <mxGeometry x="325" y="28" width="319" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5A_load" value="&lt;b&gt;load_canonical_risk_main_dataset()&lt;/b&gt;&#xa;risk_canonical.py:210&#xa;Convenience = fetch + canonicalize" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;fontSize=10;" parent="L5A" vertex="1">
+                    <mxGeometry x="14" y="100" width="295" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5A_indexes" value="&lt;b&gt;inspect_risk_main_indexes()&lt;/b&gt;&#xa;risk_canonical.py:89&#xa;Returns index health for /health" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;strokeDasharray=4;fontSize=10;" parent="L5A" vertex="1">
+                    <mxGeometry x="325" y="100" width="319" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5A_out" value="→ &lt;i&gt;raw_canonical_df&lt;/i&gt;  (flat, normalized Risk.Main)" style="text;html=1;fontSize=10;fillColor=#e8d5f5;strokeColor=#9673a6;" parent="L5A" vertex="1">
+                    <mxGeometry x="130" y="168" width="400" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5B" value="5B · Build Scoring Frame  (risk_main.py)" style="swimlane;startSize=20;fillColor=#f3eef7;strokeColor=#9673a6;fontSize=10;fontStyle=1;" parent="L5" vertex="1">
+                    <mxGeometry x="700" y="38" width="680" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5B_fetch_prod" value="&lt;b&gt;fetch_production_risk_main_dataset()&lt;/b&gt;&#xa;risk_main.py:19&#xa;Thin wrapper over canonical fetch" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;fontSize=10;" parent="L5B" vertex="1">
+                    <mxGeometry x="14" y="28" width="310" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5B_build" value="&lt;b&gt;build_risk_main_scoring_frame()&lt;/b&gt;&#xa;risk_main.py:35&#xa;raw_canonical → feature engineering entry" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;fontStyle=1;fontSize=10;" parent="L5B" vertex="1">
+                    <mxGeometry x="340" y="28" width="326" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5B_cust_agg" value="&lt;b&gt;build_risk_main_customer_aggregates()&lt;/b&gt;&#xa;risk_main.py:69&#xa;Customer-level history from full_df" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;fontSize=10;" parent="L5B" vertex="1">
+                    <mxGeometry x="14" y="100" width="310" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5B_manual" value="&lt;b&gt;build_risk_main_manual_request_frame()&lt;/b&gt;&#xa;risk_main.py:117&#xa;Ad-hoc payload → single-row df" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;fontSize=10;" parent="L5B" vertex="1">
+                    <mxGeometry x="340" y="100" width="326" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5B_out" value="→ &lt;i&gt;scoring_frame_df&lt;/i&gt;  (canonical + basic feature cols)" style="text;html=1;fontSize=10;fillColor=#e8d5f5;strokeColor=#9673a6;" parent="L5B" vertex="1">
+                    <mxGeometry x="130" y="168" width="420" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5C" value="5C · Parsing  (parsing.py)  — called by canonicalize" style="swimlane;startSize=20;fillColor=#f3eef7;strokeColor=#9673a6;fontSize=10;fontStyle=1;" parent="L5" vertex="1">
+                    <mxGeometry x="1400" y="38" width="620" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5C_pay" value="&lt;b&gt;parse_payment_value()&lt;/b&gt;&#xa;parsing.py&#xa;Raw string → PaymentParseResult" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;fontSize=10;" parent="L5C" vertex="1">
+                    <mxGeometry x="14" y="28" width="280" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5C_date" value="&lt;b&gt;parse_main_date()&lt;/b&gt;&#xa;parsing.py&#xa;Normalize date strings/timestamps" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;fontSize=10;" parent="L5C" vertex="1">
+                    <mxGeometry x="312" y="28" width="295" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5C_safe" value="&lt;b&gt;safe_text() / safe_numeric()&lt;/b&gt;&#xa;Type-safe col extractors" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;strokeDasharray=4;fontSize=10;" parent="L5C" vertex="1">
+                    <mxGeometry x="14" y="100" width="280" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5C_tokens" value="&lt;b&gt;_extract_payment_tokens()&lt;/b&gt;&#xa;&lt;b&gt;_parse_payment_token()&lt;/b&gt;&#xa;Tokenise raw payment string" style="rounded=1;fillColor=#fff;strokeColor=#9673a6;strokeDasharray=4;fontSize=10;" parent="L5C" vertex="1">
+                    <mxGeometry x="312" y="100" width="295" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5D" value="5D · Runner  (runner.py)  — top-level orchestrator" style="swimlane;startSize=20;fillColor=#d5e8d4;strokeColor=#9673a6;fontSize=10;fontStyle=1;" parent="L5" vertex="1">
+                    <mxGeometry x="2040" y="38" width="820" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5D_runner" value="&lt;b&gt;score_mongo_frame()&lt;/b&gt;&#xa;runner.py:13&#xa;1. get_active_production_model_family()&#xa;2. build_risk_main_scoring_frame(current_df, history_df)&#xa;3. score_production_frame(scoring_frame)" style="rounded=1;fillColor=#d5f0d0;strokeColor=#9673a6;fontStyle=1;fontSize=11;" parent="L5D" vertex="1">
+                    <mxGeometry x="60" y="30" width="700" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="L5D_out" value="→ &lt;i&gt;scored_df&lt;/i&gt;  (+ risk_score · risk_band · delay_prob · top_features)" style="text;html=1;fontSize=10;fillColor=#e8d5f5;strokeColor=#9673a6;" parent="L5D" vertex="1">
+                    <mxGeometry x="60" y="140" width="700" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6" value="⑥ FEATURE ENGINEERING  ·  features/" style="swimlane;startSize=28;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="1560" width="2900" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6A" value="6A · Engineering  (engineering.py)" style="swimlane;startSize=20;fillColor=#fff5e6;strokeColor=#d79b00;fontSize=10;fontStyle=1;" parent="L6" vertex="1">
+                    <mxGeometry x="20" y="38" width="960" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6A_build" value="&lt;b&gt;build_risk_main_feature_frame()&lt;/b&gt;&#xa;engineering.py&#xa;Master entry — calls all sub-builders" style="rounded=1;fillColor=#ffe0a0;strokeColor=#d79b00;fontStyle=1;fontSize=11;" parent="L6A" vertex="1">
+                    <mxGeometry x="330" y="26" width="310" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6A_cal" value="&lt;b&gt;_add_calendar_features()&lt;/b&gt;&#xa;DOW · month · quarter · sin/cos" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;strokeDasharray=4;fontSize=10;" parent="L6A" vertex="1">
+                    <mxGeometry x="14" y="100" width="220" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6A_freq" value="&lt;b&gt;_add_frequency_features()&lt;/b&gt;&#xa;*_freq · *_share encoding" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;strokeDasharray=4;fontSize=10;" parent="L6A" vertex="1">
+                    <mxGeometry x="248" y="100" width="220" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6A_hist_f" value="&lt;b&gt;_add_additional_customer_history_features()&lt;/b&gt;&#xa;prior_invoice_* · cust_* rolling stats" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;strokeDasharray=4;fontSize=10;" parent="L6A" vertex="1">
+                    <mxGeometry x="482" y="100" width="250" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6A_entity" value="&lt;b&gt;_add_entity_history_risk_features()&lt;/b&gt;&#xa;entity_* risk roll-ups" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;strokeDasharray=4;fontSize=10;" parent="L6A" vertex="1">
+                    <mxGeometry x="746" y="100" width="200" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6A_bucket" value="&lt;b&gt;_terms_bucket() / _amount_bucket()&lt;/b&gt;&#xa;Quantile buckets for terms &amp; amounts" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;strokeDasharray=4;fontSize=10;" parent="L6A" vertex="1">
+                    <mxGeometry x="14" y="162" width="460" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6A_compose" value="&lt;b&gt;_compose_key()&lt;/b&gt;&#xa;Composite categorical key" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;strokeDasharray=4;fontSize=10;" parent="L6A" vertex="1">
+                    <mxGeometry x="486" y="162" width="460" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6B" value="6B · Customer History  (customer_aggregates.py)" style="swimlane;startSize=20;fillColor=#fff5e6;strokeColor=#d79b00;fontSize=10;fontStyle=1;" parent="L6" vertex="1">
+                    <mxGeometry x="1000" y="38" width="700" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6B_build" value="&lt;b&gt;build_customer_history_aggregates()&lt;/b&gt;&#xa;customer_aggregates.py:39&#xa;Aggregate history per customer" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;fontStyle=1;fontSize=10;" parent="L6B" vertex="1">
+                    <mxGeometry x="14" y="28" width="320" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6B_merge" value="&lt;b&gt;merge_customer_history_aggregates()&lt;/b&gt;&#xa;customer_aggregates.py:80&#xa;Left-join agg onto scoring frame" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;fontSize=10;" parent="L6B" vertex="1">
+                    <mxGeometry x="348" y="28" width="336" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6B_add" value="&lt;b&gt;add_customer_aggregates()&lt;/b&gt;&#xa;customer_aggregates.py:94&#xa;Convenience = build + merge" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;fontSize=10;" parent="L6B" vertex="1">
+                    <mxGeometry x="14" y="100" width="320" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6B_ids" value="&lt;b&gt;customer_ids_from_frame()&lt;/b&gt;&#xa;customer_aggregates.py:27&#xa;Extracts unique customer_id list" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;strokeDasharray=4;fontSize=10;" parent="L6B" vertex="1">
+                    <mxGeometry x="348" y="100" width="336" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6B_out" value="→ &lt;i&gt;history_agg_df&lt;/i&gt;  (cust_hist_* aggregation cols)" style="text;html=1;fontSize=10;fillColor=#ffe8cc;strokeColor=#d79b00;" parent="L6B" vertex="1">
+                    <mxGeometry x="150" y="170" width="400" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6C" value="6C · Point-in-Time &amp; Feature Registry  (point_in_time.py / registry.py)" style="swimlane;startSize=20;fillColor=#fff5e6;strokeColor=#d79b00;fontSize=10;fontStyle=1;" parent="L6" vertex="1">
+                    <mxGeometry x="1720" y="38" width="1140" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6C_pit" value="&lt;b&gt;add_point_in_time_customer_features()&lt;/b&gt;&#xa;point_in_time.py&#xa;PIT-safe features — no leakage" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;fontStyle=1;fontSize=10;" parent="L6C" vertex="1">
+                    <mxGeometry x="14" y="28" width="320" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6C_validate" value="&lt;b&gt;validate_production_columns()&lt;/b&gt;&#xa;production_registry.py&#xa;Checks required columns present" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;strokeDasharray=4;fontSize=10;" parent="L6C" vertex="1">
+                    <mxGeometry x="350" y="28" width="320" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6C_select" value="&lt;b&gt;select_model_features()&lt;/b&gt;&#xa;registry.py&#xa;Picks XGBoost input columns from df" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;fontStyle=1;fontSize=10;" parent="L6C" vertex="1">
+                    <mxGeometry x="686" y="28" width="320" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6C_seg_col" value="&lt;b&gt;SEGMENT_COL / CUSTOMER_ID_COL&lt;/b&gt;&#xa;registry.py (constants)&#xa;Column name contracts — used system-wide" style="rounded=1;fillColor=#fff;strokeColor=#d79b00;strokeDasharray=4;fontSize=10;" parent="L6C" vertex="1">
+                    <mxGeometry x="14" y="100" width="992" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6C_out" value="→ &lt;i&gt;feature_matrix_df&lt;/i&gt;  (XGBoost-ready input features)" style="text;html=1;fontSize=10;fillColor=#ffe8cc;strokeColor=#d79b00;" parent="L6C" vertex="1">
+                    <mxGeometry x="300" y="168" width="540" height="32" as="geometry"/>
+                </mxCell>
+                <mxCell id="A17" value="history_agg_df merged into scoring_frame" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#0066cc;strokeWidth=1.5;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="L6" source="L6B" target="L6A" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1350" y="270"/>
+                            <mxPoint x="480" y="270"/>
+                            <mxPoint x="480" y="258"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="L7" value="⑦ DATA STORE  ·  MongoDB" style="swimlane;startSize=28;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="1940" width="1100" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="L7_mongo" value="&lt;b&gt;MongoDB Risk.Main&lt;/b&gt;&#xa;DB: Risk · Collection: Main&#xa;All invoice records" style="shape=cylinder3;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=10;" parent="L7" vertex="1">
+                    <mxGeometry x="30" y="36" width="180" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="L7_db" value="&lt;b&gt;get_database()&lt;/b&gt;&#xa;dbconnect.py:18&#xa;Singleton MongoClient pool + timeout" style="rounded=1;fillColor=#fff;strokeColor=#666;fontSize=10;" parent="L7" vertex="1">
+                    <mxGeometry x="230" y="44" width="280" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L7_config" value="&lt;b&gt;config.py&lt;/b&gt;&#xa;get_mongo_uri() · get_database_name()&#xa;get_production_risk_collection()" style="rounded=1;fillColor=#fff;strokeColor=#666;fontSize=10;" parent="L7" vertex="1">
+                    <mxGeometry x="530" y="44" width="280" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L7_seg" value="&lt;b&gt;filter_segment()&lt;/b&gt;&#xa;data/segment_filters.py&#xa;Filters df by SEGMENT_COL" style="rounded=1;fillColor=#fff;strokeColor=#666;strokeDasharray=4;fontSize=10;" parent="L7" vertex="1">
+                    <mxGeometry x="830" y="44" width="240" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8" value="⑧ SCORING &amp; DECISIONING  ·  scoring/" style="swimlane;startSize=28;fillColor=#d0e0f0;strokeColor=#336699;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="1260" y="1940" width="1740" height="260" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_load_grp" value="Model Loading" style="swimlane;startSize=20;fillColor=#e8f0f8;strokeColor=#336699;fontSize=10;fontStyle=1;" parent="L8" vertex="1">
+                    <mxGeometry x="20" y="38" width="390" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_load_arts" value="&lt;b&gt;load_production_artifacts()&lt;/b&gt;&#xa;scoring/model.py:145&#xa;Loads XGBoost + preprocessor .pkl" style="rounded=1;fillColor=#fff;strokeColor=#336699;fontStyle=1;fontSize=10;" parent="L8_load_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="360" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_registry" value="&lt;b&gt;load_risk_main_registry()&lt;/b&gt;&#xa;model.py:57  Parses registry.json" style="rounded=1;fillColor=#fff;strokeColor=#336699;fontSize=10;" parent="L8_load_grp" vertex="1">
+                    <mxGeometry x="14" y="100" width="170" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_select" value="&lt;b&gt;_select_risk_main_entry()&lt;/b&gt;&#xa;model.py:97  Champion model entry" style="rounded=1;fillColor=#fff;strokeColor=#336699;strokeDasharray=4;fontSize=10;" parent="L8_load_grp" vertex="1">
+                    <mxGeometry x="194" y="100" width="180" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_score_grp" value="Scoring Engine" style="swimlane;startSize=20;fillColor=#e8f0f8;strokeColor=#336699;fontSize=10;fontStyle=1;" parent="L8" vertex="1">
+                    <mxGeometry x="430" y="38" width="420" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_score_prod" value="&lt;b&gt;score_production_frame()&lt;/b&gt;&#xa;scoring/model.py:191&#xa;preprocessor.transform() →&#xa;xgboost.predict_proba() →&#xa;appends: pd · score · risk_band · top_features" style="rounded=1;fillColor=#c8e6c9;strokeColor=#336699;fontStyle=1;fontSize=10;" parent="L8_score_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="390" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_describe" value="&lt;b&gt;describe_active_production_model()&lt;/b&gt;&#xa;model.py:128  version · threshold · features" style="rounded=1;fillColor=#fff;strokeColor=#336699;fontSize=10;" parent="L8_score_grp" vertex="1">
+                    <mxGeometry x="14" y="132" width="390" height="48" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_dec_grp" value="Decisioning" style="swimlane;startSize=20;fillColor=#e8f0f8;strokeColor=#336699;fontSize=10;fontStyle=1;" parent="L8" vertex="1">
+                    <mxGeometry x="870" y="38" width="420" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_credit" value="&lt;b&gt;build_credit_suggestions()&lt;/b&gt;&#xa;scoring/decisioning.py:29&#xa;risk_band + pd + top_features →&#xa;1-3 human-readable credit actions&#xa;  High Risk: advance payment / LC&#xa;  Medium: tighter terms + follow-up&#xa;  Low: standard approval" style="rounded=1;fillColor=#fff;strokeColor=#336699;fontStyle=1;fontSize=10;" parent="L8_dec_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="390" height="152" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_arts_grp" value="Model Artifacts  ·  models/production/" style="swimlane;startSize=20;fillColor=#f0f4fa;strokeColor=#336699;fontSize=10;fontStyle=1;" parent="L8" vertex="1">
+                    <mxGeometry x="1310" y="38" width="400" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="L8_arts_files" value="risk_main_registry.json&#xa;risk_main_xgb_20260319_094014.pkl&#xa;preprocessor_risk_main_xgb_20260319_094014.pkl&#xa;pooled_xgb.pkl&#xa;preprocessor_pooled_xgb_*.pkl" style="text;html=0;fontSize=10;align=left;fillColor=#dae8fc;strokeColor=#336699;spacingLeft=6;" parent="L8_arts_grp" vertex="1">
+                    <mxGeometry x="14" y="28" width="372" height="150" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend_box" value="LEGEND" style="swimlane;startSize=24;fillColor=#ffffff;strokeColor=#333;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="100" y="2240" width="2900" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="lg1" value="━━━▶  Synchronous function call (solid)" style="text;html=1;fontSize=11;" parent="legend_box" vertex="1">
+                    <mxGeometry x="20" y="36" width="320" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="lg2" value="╌╌╌▶  DataFrame / data flow (blue dashed)" style="text;html=1;fontSize=11;fontColor=#0066cc;" parent="legend_box" vertex="1">
+                    <mxGeometry x="360" y="36" width="340" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="lg3" value="╌╌╌▶  Auto-refresh / async (orange dashed)" style="text;html=1;fontSize=11;fontColor=#d6820a;" parent="legend_box" vertex="1">
+                    <mxGeometry x="720" y="36" width="360" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="lg4" value="Solid border = public function  |  Dashed border = private (_) function" style="text;html=1;fontSize=11;" parent="legend_box" vertex="1">
+                    <mxGeometry x="1100" y="36" width="560" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="lg5" value="🟢 Green fill = main orchestrator / entry point  |  🟡 Yellow fill = background thread" style="text;html=1;fontSize=11;" parent="legend_box" vertex="1">
+                    <mxGeometry x="1680" y="36" width="700" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="A1" value="A request / client entry" style="endArrow=block;html=1;strokeColor=#1E88E5;strokeWidth=2;fontSize=10;fontColor=#1E88E5;" parent="1" source="L1" target="L2" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="A2" value="scored_df → response_from_raw()" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#0066cc;strokeWidth=2;dashed=1;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" parent="1" source="L2" target="L3" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="A3" value="A3/B5/C4 response back to client" style="endArrow=block;dashed=1;html=1;strokeColor=#1E88E5;strokeWidth=2;fontSize=10;fontColor=#1E88E5;" parent="1" target="L1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="50" y="660"/>
+                            <mxPoint x="50" y="170"/>
+                            <mxPoint x="245" y="170"/>
+                        </Array>
+                        <mxPoint x="100" y="660" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A4" value="A2/B2/C2/E2 cache interaction" style="endArrow=block;html=1;strokeColor=#1E88E5;strokeWidth=2;fontSize=10;fontColor=#1E88E5;" parent="1" source="L2" target="L4" edge="1">
+                    <mxGeometry x="0.5882" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A5" value="snapshot records → _shape_response_frame()" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#0066cc;strokeWidth=2;dashed=1;" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1580" y="780"/>
+                            <mxPoint x="1570" y="780"/>
+                            <mxPoint x="1570" y="760"/>
+                            <mxPoint x="1560" y="760"/>
+                        </Array>
+                        <mxPoint x="1580" y="810" as="sourcePoint"/>
+                        <mxPoint x="1560" y="720" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A6" value="fetch_production_risk_main_dataset()" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#336699;strokeWidth=2;entryX=0.158;entryY=-0.007;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" target="L5" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="560" y="1080" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A7" value="score_mongo_frame() per segment" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#336699;strokeWidth=2;entryX=0.271;entryY=-0.017;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" target="L5" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="880" y="1090" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A8" value="scored_df → stored in snapshot" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#0066cc;strokeWidth=2;dashed=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" target="L4" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="2320" y="1180"/>
+                            <mxPoint x="2320" y="1130"/>
+                            <mxPoint x="1550" y="1130"/>
+                        </Array>
+                        <mxPoint x="2321.1293658088234" y="1180" as="sourcePoint"/>
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A9" value="raw_canonical_df → build_risk_main_feature_frame()" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#0066cc;strokeWidth=2;dashed=1;entryX=0.164;entryY=-0.014;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" target="L6" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="580" y="1460" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A10" value="MongoDB projection query" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#336699;strokeWidth=2;exitX=0.1;exitY=1;exitDx=0;exitDy=0;entryX=0.1;entryY=0;entryDx=0;entryDy=0;" parent="1" source="L5" target="L7" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="390" y="1510"/>
+                            <mxPoint x="50" y="1510"/>
+                            <mxPoint x="50" y="1870"/>
+                            <mxPoint x="210" y="1870"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A11" value="raw_cursor (nested docs)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#0066cc;strokeWidth=2;dashed=1;exitX=0.05;exitY=0;exitDx=0;exitDy=0;" parent="1" source="L7" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="155" y="1900"/>
+                            <mxPoint x="10" y="1900"/>
+                            <mxPoint x="10" y="1450"/>
+                        </Array>
+                        <mxPoint x="100" y="1450" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A12" value="feature_matrix_df (XGBoost-ready)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#0066cc;strokeWidth=2;dashed=1;entryX=0.053;entryY=0.024;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" target="L8" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="730" y="1850" as="sourcePoint"/>
+                        <Array as="points">
+                            <mxPoint x="730" y="1890"/>
+                            <mxPoint x="1352" y="1890"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A13" value="scored_df (pd · risk_band · top_features)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#0066cc;strokeWidth=2;dashed=1;exitX=0.807;exitY=0.014;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="L8" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="2660" y="1944"/>
+                            <mxPoint x="2660" y="1880"/>
+                            <mxPoint x="3040" y="1880"/>
+                            <mxPoint x="3040" y="1500"/>
+                            <mxPoint x="2350" y="1500"/>
+                        </Array>
+                        <mxPoint x="2270" y="1940" as="sourcePoint"/>
+                        <mxPoint x="2350" y="1460" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A14" value="B3 live scoring path" style="endArrow=block;html=1;strokeColor=#2E7D32;strokeWidth=2;fontSize=10;fontColor=#2E7D32;" parent="1" source="L2" target="L5" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="2060" y="480"/>
+                            <mxPoint x="2060" y="540"/>
+                            <mxPoint x="3020" y="540"/>
+                            <mxPoint x="3020" y="1160"/>
+                            <mxPoint x="2710" y="1160"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="A16" value="D0 startup model warmup" style="endArrow=block;html=1;strokeColor=#616161;strokeWidth=2;fontSize=10;fontColor=#616161;" parent="1" source="L2" target="L8" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="2150" y="480"/>
+                            <mxPoint x="2150" y="500"/>
+                            <mxPoint x="3110" y="500"/>
+                            <mxPoint x="3110" y="1920"/>
+                            <mxPoint x="2900" y="1920"/>
+                            <mxPoint x="2900" y="1940"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="simple_title" value="&lt;b&gt;Simple Horizontal Request Workflow&lt;/b&gt;&lt;br/&gt;Single-line view of the main request path and the files/processes involved" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=12;fontStyle=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="3180" width="2860" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_dash" value="&lt;b&gt;Dashboard&lt;/b&gt;&lt;br/&gt;credit-risk-dashboard/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6C8EBF;strokeWidth=2;fontSize=10;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="3270" width="250" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_api" value="&lt;b&gt;FastAPI Route&lt;/b&gt;&lt;br/&gt;api/scoring_api.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6C8EBF;strokeWidth=2;fontSize=10;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="405" y="3270" width="250" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_models" value="&lt;b&gt;Request Validation&lt;/b&gt;&lt;br/&gt;api/models.py + api/auth.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#D79B00;strokeWidth=2;fontSize=10;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="3270" width="250" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_cache" value="&lt;b&gt;Cache / Snapshot Gate&lt;/b&gt;&lt;br/&gt;api/cache.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6C8EBF;strokeWidth=2;fontSize=10;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="975" y="3270" width="250" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_mongo" value="&lt;b&gt;Mongo Source&lt;/b&gt;&lt;br/&gt;dbconnect.py -&gt; Risk.Main" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#D79B00;strokeWidth=2;fontSize=10;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1260" y="3270" width="250" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_pipeline" value="&lt;b&gt;Build / Parse&lt;/b&gt;&lt;br/&gt;pipeline/risk_canonical.py + pipeline/risk_main.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6C8EBF;strokeWidth=2;fontSize=10;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1545" y="3270" width="250" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_features" value="&lt;b&gt;Feature Engineering&lt;/b&gt;&lt;br/&gt;features/engineering.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#D79B00;strokeWidth=2;fontSize=10;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="1830" y="3270" width="250" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_score" value="&lt;b&gt;XGBoost Scoring&lt;/b&gt;&lt;br/&gt;scoring/model.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6C8EBF;strokeWidth=2;fontSize=10;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="2115" y="3270" width="250" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_response" value="&lt;b&gt;Response Builder&lt;/b&gt;&lt;br/&gt;api/response_builder.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9E6;strokeColor=#D79B00;strokeWidth=2;fontSize=10;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="2400" y="3270" width="250" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_return" value="&lt;b&gt;JSON Back To UI&lt;/b&gt;&lt;br/&gt;paged / single / customer response" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6C8EBF;strokeWidth=2;fontSize=10;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="2685" y="3270" width="250" height="72" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_edge_1" value="1 request" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=10;" parent="1" source="simple_dash" target="simple_api" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_edge_2" value="2 validate + auth" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=10;" parent="1" source="simple_api" target="simple_models" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_edge_3" value="3 route chooses path" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=10;" parent="1" source="simple_models" target="simple_cache" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_edge_4" value="4 fetch / snapshot source" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=10;" parent="1" source="simple_cache" target="simple_mongo" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_edge_5" value="5 raw docs -&gt; frame" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=10;" parent="1" source="simple_mongo" target="simple_pipeline" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_edge_6" value="6 engineered columns" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=10;" parent="1" source="simple_pipeline" target="simple_features" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_edge_7" value="7 feature matrix" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=10;" parent="1" source="simple_features" target="simple_score" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_edge_8" value="8 scored_df" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=10;" parent="1" source="simple_score" target="simple_response" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_edge_9" value="9 JSON payload" style="endArrow=block;html=1;strokeColor=#333333;strokeWidth=2;fontSize=10;" parent="1" source="simple_response" target="simple_return" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_notes" value="&lt;div style=&quot;text-align:left;&quot;&gt;&lt;b&gt;Numbered Arrow Meaning&lt;/b&gt;&lt;br/&gt;&lt;b&gt;1 request&lt;/b&gt;: dashboard or client sends HTTP call into the FastAPI route in &lt;i&gt;api/scoring_api.py&lt;/i&gt;&lt;br/&gt;&lt;b&gt;2 validate + auth&lt;/b&gt;: Pydantic request model + &lt;i&gt;require_api_key()&lt;/i&gt; validate the input and access&lt;br/&gt;&lt;b&gt;3 route chooses path&lt;/b&gt;: route decides whether to use live scoring, customer drilldown, or the scored snapshot path&lt;br/&gt;&lt;b&gt;4 fetch / snapshot source&lt;/b&gt;: &lt;i&gt;ApiCache&lt;/i&gt; either serves &lt;b&gt;snapshot_records&lt;/b&gt; from &lt;i&gt;load_scored_snapshot()/get_scored_page()&lt;/i&gt; or refreshes source data via &lt;i&gt;load_full_dataset()&lt;/i&gt;&lt;br/&gt;&lt;b&gt;5 raw docs -&amp;gt; frame&lt;/b&gt;: MongoDB &lt;b&gt;Risk.Main&lt;/b&gt; documents are fetched and flattened/canonicalized into &lt;b&gt;raw_canonical_df&lt;/b&gt;&lt;br/&gt;&lt;b&gt;6 engineered columns&lt;/b&gt;: the canonical frame becomes &lt;b&gt;scoring_frame_df&lt;/b&gt; with derived date, ratio, history, and entity features&lt;br/&gt;&lt;b&gt;7 feature matrix&lt;/b&gt;: &lt;b&gt;feature_matrix_df&lt;/b&gt; is the model input created by selecting the exact XGBoost feature columns&lt;br/&gt;&lt;b&gt;8 scored_df&lt;/b&gt;: &lt;i&gt;score_production_frame()&lt;/i&gt; returns &lt;b&gt;scored_df&lt;/b&gt; with &lt;b&gt;pd&lt;/b&gt;, &lt;b&gt;score&lt;/b&gt;, &lt;b&gt;risk_band&lt;/b&gt;, &lt;b&gt;approval&lt;/b&gt;, and &lt;b&gt;top_features&lt;/b&gt;&lt;br/&gt;&lt;b&gt;9 JSON payload&lt;/b&gt;: response builder converts the frame into final API records/summary returned to the UI&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#666666;strokeWidth=2;fontSize=10;align=left;verticalAlign=top;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="3385" width="1450" height="300" as="geometry"/>
+                </mxCell>
+                <mxCell id="simple_funcs" value="&lt;div style=&quot;text-align:left;&quot;&gt;&lt;b&gt;Important Hierarchical Functions / Files&lt;/b&gt;&lt;br/&gt;&lt;b&gt;Dashboard / Client&lt;/b&gt;: &lt;i&gt;credit-risk-dashboard/&lt;/i&gt;&lt;br/&gt;&lt;b&gt;API Entry&lt;/b&gt;: &lt;i&gt;score()&lt;/i&gt;, &lt;i&gt;score_all()&lt;/i&gt;, &lt;i&gt;score_customer()&lt;/i&gt;, &lt;i&gt;refresh_cache()&lt;/i&gt;, &lt;i&gt;health()&lt;/i&gt; in &lt;i&gt;api/scoring_api.py&lt;/i&gt;&lt;br/&gt;&lt;b&gt;Cache Hub&lt;/b&gt;: &lt;i&gt;load_full_dataset()&lt;/i&gt;, &lt;i&gt;load_scored_snapshot()&lt;/i&gt;, &lt;i&gt;get_scored_page()&lt;/i&gt;, &lt;i&gt;get_snapshot_customer_frame()&lt;/i&gt;, &lt;i&gt;refresh()&lt;/i&gt; in &lt;i&gt;api/cache.py&lt;/i&gt;&lt;br/&gt;&lt;b&gt;Mongo / Config&lt;/b&gt;: &lt;i&gt;get_database()&lt;/i&gt; in &lt;i&gt;dbconnect.py&lt;/i&gt;, env helpers in &lt;i&gt;config.py&lt;/i&gt;&lt;br/&gt;&lt;b&gt;Fetch + Canonicalize&lt;/b&gt;: &lt;i&gt;fetch_risk_main_frame()&lt;/i&gt;, &lt;i&gt;canonicalize_risk_main_frame()&lt;/i&gt; in &lt;i&gt;pipeline/risk_canonical.py&lt;/i&gt;&lt;br/&gt;&lt;b&gt;Build / Parse&lt;/b&gt;: &lt;i&gt;build_risk_main_scoring_frame()&lt;/i&gt;, &lt;i&gt;build_risk_main_manual_request_frame()&lt;/i&gt; in &lt;i&gt;pipeline/risk_main.py&lt;/i&gt;; &lt;i&gt;parse_main_date()&lt;/i&gt;, &lt;i&gt;parse_payment_value()&lt;/i&gt; in &lt;i&gt;pipeline/parsing.py&lt;/i&gt;&lt;br/&gt;&lt;b&gt;Feature Engineering&lt;/b&gt;: &lt;i&gt;build_risk_main_feature_frame()&lt;/i&gt; in &lt;i&gt;features/engineering.py&lt;/i&gt;, &lt;i&gt;add_point_in_time_customer_features()&lt;/i&gt; in &lt;i&gt;features/point_in_time.py&lt;/i&gt;, &lt;i&gt;select_model_features()&lt;/i&gt; in &lt;i&gt;features/production_registry.py&lt;/i&gt;&lt;br/&gt;&lt;b&gt;Scoring&lt;/b&gt;: &lt;i&gt;load_production_artifacts()&lt;/i&gt;, &lt;i&gt;load_risk_main_registry()&lt;/i&gt;, &lt;i&gt;score_production_frame()&lt;/i&gt; in &lt;i&gt;scoring/model.py&lt;/i&gt;&lt;br/&gt;&lt;b&gt;Response&lt;/b&gt;: &lt;i&gt;response_from_raw()&lt;/i&gt;, &lt;i&gt;_shape_response_frame()&lt;/i&gt;, &lt;i&gt;_build_customer_summary_payload()&lt;/i&gt; in &lt;i&gt;api/response_builder.py&lt;/i&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#D79B00;strokeWidth=2;fontSize=10;align=left;verticalAlign=top;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="1605" y="3385" width="1375" height="300" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
