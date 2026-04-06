@@ -5,7 +5,7 @@ import hashlib
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
 from fastapi import WebSocket
-from ..database import get_analytics_database, get_all_async_mode_databases
+from ..database import get_analytics_database, get_all_async_queryFor_databases
 from .query_builder import QueryBuilder
 from ..schemas.analytics import PivotConfig
 from .dashboard_stats import calculate_dashboard_stats, calculate_financial_stats
@@ -145,7 +145,7 @@ class StreamManager:
              # The existing QueryBuilder builds a pipeline. 
              # We can use the async driver to run it.
              
-             mode_dbs = get_all_async_mode_databases()
+             queryFor_dbs = get_all_async_queryFor_databases()
              pipeline = self.qb.build_pipeline(config)
              
              # DEBUG: Log Pipeline
@@ -158,7 +158,7 @@ class StreamManager:
                  cursor = await db.queries.aggregate(pipeline)
                  return await cursor.to_list(length=None)
                  
-             tasks = [run_query(db) for db in mode_dbs.values()]
+             tasks = [run_query(db) for db in queryFor_dbs.values()]
              all_results = await asyncio.gather(*tasks)
              
              results = []

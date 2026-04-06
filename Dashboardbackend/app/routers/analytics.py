@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from ..schemas.analytics import PivotConfig
 from ..services.query_builder import QueryBuilder
-from ..database import get_all_async_mode_databases
+from ..database import get_all_async_queryFor_databases
 import asyncio
 from typing import List, Dict, Any
 
@@ -10,7 +10,7 @@ router = APIRouter(tags=["analytics"])
 @router.post("/query")
 async def query_analytics(config: PivotConfig):
     try:
-        mode_dbs = get_all_async_mode_databases()
+        queryFor_dbs = get_all_async_queryFor_databases()
         
         qb = QueryBuilder()
         pipeline = qb.build_pipeline(config)
@@ -19,7 +19,7 @@ async def query_analytics(config: PivotConfig):
             cursor = await db.queries.aggregate(pipeline)
             return await cursor.to_list(length=None)
             
-        tasks = [run_query(db) for db in mode_dbs.values()]
+        tasks = [run_query(db) for db in queryFor_dbs.values()]
         all_results = await asyncio.gather(*tasks)
         
         results = []

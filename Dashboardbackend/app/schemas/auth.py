@@ -26,12 +26,22 @@ class Token(BaseModel):
     token_type: str
     refresh_token: Optional[str] = None
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
-
 class TokenData(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
+    expires_at: datetime
+
+class AuthResponse(BaseModel):
+    success: bool
+    data: TokenData
+
+class JWTTokenData(BaseModel):
     username: Optional[str] = None
     role: Optional[str] = None
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 class DepartmentBase(BaseModel):
     name: str
