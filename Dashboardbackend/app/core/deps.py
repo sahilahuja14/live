@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 import jwt # Using PyJWT
 from .security import decode_token
-from ..schemas.auth import TokenData, UserInDB
+from ..schemas.auth import JWTTokenData, UserInDB
 from ..database import get_async_database
 from typing import Optional
 
@@ -22,8 +22,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
         
         if username is None or token_type != "access":
             raise credentials_exception
-            
-        token_data = TokenData(username=username)
+
+        token_data = JWTTokenData(username=username)
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

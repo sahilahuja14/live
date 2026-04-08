@@ -136,3 +136,6 @@ Riskpredictionmodel/**/*.tar
 Riskpredictionmodel/**/*.tar.gz
 Riskpredictionmodel/**/*.rar
 Riskpredictionmodel/**/*.7z
+live_feature_quality.csv
+live_scored_sample.csv
+Riskpredictionmodel/pipeline/schema_inventory

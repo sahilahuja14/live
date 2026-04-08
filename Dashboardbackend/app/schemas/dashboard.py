@@ -33,10 +33,10 @@ class DailyStats(BaseModel):
     shipment: StatsShipment
     invoice: StatsInvoice
     weight: StatsWeight
-    byMode: Optional[Dict[str, 'DailyStatsByMode']] = None
-    byQueryType: Optional[Dict[str, 'DailyStatsByMode']] = None
+    byqueryFor: Optional[Dict[str, 'DailyStatsByqueryFor']] = None
+    byQueryType: Optional[Dict[str, 'DailyStatsByqueryFor']] = None
 
-class DailyStatsByMode(BaseModel):
+class DailyStatsByqueryFor(BaseModel):
     queries: StatsQueries
     bookings: StatsBookings
     shipment: StatsShipment
@@ -50,8 +50,8 @@ class DashboardResponse(BaseModel):
     invoice: StatsInvoice
     weight: StatsWeight
     history: List[DailyStats]
-    byMode: Dict[str, DailyStatsByMode]
-    byQueryType: Dict[str, DailyStatsByMode]
+    byqueryFor: Dict[str, DailyStatsByqueryFor]
+    byQueryType: Dict[str, DailyStatsByqueryFor]
     byClient: Dict[str, int]
     byRoute: Dict[str, int]
 

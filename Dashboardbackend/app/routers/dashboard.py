@@ -17,7 +17,7 @@ async def get_dashboard_stats(
     range_param: Optional[str] = Query(None, alias="range"),
     from_date: Optional[datetime] = Query(None, alias="from"),
     to_date: Optional[datetime] = Query(None, alias="to"),
-    shipment_type: str = Query("all", alias="mode"),
+    shipment_type: str = Query("all", alias="queryFor"),
     query_type: Optional[str] = Query(None, alias="queryType")
 ):
     stats = await calculate_dashboard_stats(

@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import os
+import re
 
 import pandas as pd
 
-from .risk_map import PRODUCTION_RISK_COLLECTION, PRODUCTION_RISK_DB_NAME, TARGET_DELAY_DAYS
+from ..config import get_source_mode
 from ..dbconnect import get_database
+from .live_adapter import fetch_live_frame
+from .parsing import parse_main_date, safe_numeric
 from .risk_map import NORMALIZED_TO_CANONICAL_FIELD_MAP
-from .parsing import parse_main_date
+from .risk_map import PRODUCTION_RISK_COLLECTION, PRODUCTION_RISK_DB_NAME, TARGET_DELAY_DAYS
 from .utils import flatten_dict, safe_ratio
 
 #only required column fetching from mongo to avoid bulk data transfer and then canonicalize it in pandas for further processing and model training
@@ -93,8 +96,25 @@ def _series_from_frame(df: pd.DataFrame, column: str, default=None) -> pd.Series
         return df[column]
     return pd.Series(default, index=df.index)
 
-#Main mongo call/projection query to fetch the risk main data and convert it into a dataframe with batchsize to avoid bulk 
+
+def _coerce_terms_days(value):
+    numeric = safe_numeric(value)
+    if numeric is not None:
+        return numeric
+    text = str(value).strip() if value is not None else ""
+    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    if match:
+        try:
+            return float(match.group(0))
+        except ValueError:
+            return None
+    return None
+
+
+#Main mongo call/projection query to fetch the risk main data and convert it into a dataframe with batchsize to avoid bulk
 def fetch_risk_main_frame(query: dict | None = None, limit: int | None = None) -> pd.DataFrame:
+    if get_source_mode() == "live_collections":
+        return fetch_live_frame(query=query, limit=limit)
     collection = get_database(PRODUCTION_RISK_DB_NAME)[PRODUCTION_RISK_COLLECTION]
     cursor = collection.find(query or {}, RISK_MAIN_FETCH_PROJECTION).batch_size(RISK_MAIN_FETCH_BATCH_SIZE)
     if limit is not None:
@@ -155,7 +175,6 @@ def canonicalize_risk_main_frame(
     canonical["customer_onboard_date"] = _series_from_frame(canonical, "customer_onboard_date").apply(parse_main_date)
 
     for column in [
-        "terms_days",
         "invoice_amount",
         "gross_amount",
         "paid_amount",
@@ -175,6 +194,7 @@ def canonicalize_risk_main_frame(
         "payment_installment_count",
     ]:
         canonical[column] = pd.to_numeric(canonical.get(column), errors="coerce")
+    canonical["terms_days"] = canonical.get("terms_days", pd.Series(index=canonical.index)).map(_coerce_terms_days)
 
     partial_payment = canonical.get("partial_payment_flag")
     if partial_payment is None:
@@ -235,4 +255,3 @@ def canonicalize_risk_main_frame(
 def load_canonical_risk_main_dataset(limit: int | None = None) -> pd.DataFrame:
     raw = fetch_risk_main_frame(limit=limit)
     return canonicalize_risk_main_frame(raw)
-

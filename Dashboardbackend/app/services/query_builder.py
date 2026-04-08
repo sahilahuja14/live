@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 FIELD_MAPPING = {
     # Basic Mappings
     'status': 'quoteStatus',
-    'shipmentType': 'mode',
+    'shipmentType': 'queryFor',
     'origin': 'originAirport.code',
     'destination': 'destinationAirport.code',
     'clientName': 'customerName',

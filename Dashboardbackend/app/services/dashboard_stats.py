@@ -4,7 +4,7 @@ from collections import defaultdict
 from copy import deepcopy
 from bson import ObjectId
 
-from ..database import get_async_analytics_database, get_all_async_mode_databases
+from ..database import get_async_analytics_database, get_all_async_queryFor_databases
 import asyncio
 
 
@@ -57,7 +57,7 @@ STATUS_MAP = {
     "Shipment Executed": ("shipment", "executed")
 }
 
-MODE_MAP = {
+QUERYFOR_MAP = {
     "air": "Air",
     "ocean": "Ocean",
     "road": "Road",
@@ -97,7 +97,7 @@ async def calculate_dashboard_stats(
     shipment_type: str = "all",
     query_type: Optional[str] = None
 ):
-    mode_dbs = get_all_async_mode_databases()
+    queryFor_dbs = get_all_async_queryFor_databases()
     # No single queries_col anymore
 
     end_date = to_date or datetime.now()
@@ -122,8 +122,8 @@ async def calculate_dashboard_stats(
         match_query["createdAt"] = {"$gte": start_date, "$lte": end_date}
 
     if shipment_type and shipment_type.lower() != "all":
-        modes = [MODE_MAP.get(m.strip().lower()) for m in shipment_type.split(",")]
-        match_query["queryFor"] = {"$in": modes}
+        queryFors = [QUERYFOR_MAP.get(m.strip().lower()) for m in shipment_type.split(",")]
+        match_query["queryFor"] = {"$in": queryFors}
 
     if query_type and query_type.lower() != "all":
         match_query["queryType"] = {"$regex": query_type, "$options": "i"}
@@ -169,7 +169,7 @@ async def calculate_dashboard_stats(
     pipeline = [
         {"$match": match_query},
         {"$addFields": {
-            "normMode": {
+            "normqueryFor": {
                 "$switch": {
                     "branches": [
                         {"case": {"$regexMatch": {"input": {"$ifNull": ["$queryFor", ""]}, "regex": "air", "options": "i"}}, "then": "Air"},
@@ -213,7 +213,7 @@ async def calculate_dashboard_stats(
                 {"$group": {
                     "_id": {
                         "date": "$dateStr",
-                        "mode": "$normMode",
+                        "queryFor": "$normqueryFor",
                         "qType": "$normQueryType"
                     },
                     **build_agg_sums()
@@ -233,16 +233,16 @@ async def calculate_dashboard_stats(
         result = await cursor.to_list(length=1)
         return result[0] if result and result[0] else {}
 
-    tasks = [run_agg(db) for db in mode_dbs.values()]
-    mode_results = await asyncio.gather(*tasks)
+    tasks = [run_agg(db) for db in queryFor_dbs.values()]
+    queryFor_results = await asyncio.gather(*tasks)
 
-    # Merge results from all modes
+    # Merge results from all queryFors
     merged_global = {}
     merged_daily = []
     merged_clients = []
     merged_routes = []
 
-    for res in mode_results:
+    for res in queryFor_results:
         # Sum global totals
         for gt in res.get("global_totals", []):
             for k, v in gt.items():
@@ -265,7 +265,7 @@ async def calculate_dashboard_stats(
         route_counts[item["_id"]] += item["count"]
 
     history_map = {}
-    by_mode_totals = {m: get_empty_stats() for m in ['All', 'Air', 'Ocean', 'Road', 'Courier']}
+    by_queryFor_totals = {m: get_empty_stats() for m in ['All', 'Air', 'Ocean', 'Road', 'Courier']}
     by_query_type_totals = {q: get_empty_stats() for q in ['All', 'Import', 'Export', 'Domestic', 'Third Country']}
 
     def add_stats(target, source):
@@ -279,7 +279,7 @@ async def calculate_dashboard_stats(
         if date_str == "Unknown":
             continue
             
-        mode = group["_id"]["mode"]
+        queryFor = group["_id"]["queryFor"]
         q_type = group["_id"]["qType"]
         stats = unpack_agg_stats(group)
         
@@ -299,14 +299,14 @@ async def calculate_dashboard_stats(
             }
             
         add_stats(history_map[date_str]['All'], stats)
-        if mode in history_map[date_str]:
-            add_stats(history_map[date_str][mode], stats)
+        if queryFor in history_map[date_str]:
+            add_stats(history_map[date_str][queryFor], stats)
         if q_type in history_map[date_str]['byQueryType']:
             add_stats(history_map[date_str]['byQueryType'][q_type], stats)
             
-        add_stats(by_mode_totals['All'], stats)
-        if mode in by_mode_totals:
-            add_stats(by_mode_totals[mode], stats)
+        add_stats(by_queryFor_totals['All'], stats)
+        if queryFor in by_queryFor_totals:
+            add_stats(by_queryFor_totals[queryFor], stats)
             
         add_stats(by_query_type_totals['All'], stats)
         if q_type in by_query_type_totals:
@@ -318,14 +318,14 @@ async def calculate_dashboard_stats(
         processed_history.append({
             "date": d,
             **day_data["All"],
-            "byMode": {m: day_data[m] for m in ['Air', 'Ocean', 'Road', 'Courier']},
+            "byqueryFor": {m: day_data[m] for m in ['Air', 'Ocean', 'Road', 'Courier']},
             "byQueryType": day_data["byQueryType"]
         })
 
     return {
         **global_totals,
         "history": processed_history,
-        "byMode": by_mode_totals,
+        "byqueryFor": by_queryFor_totals,
         "byQueryType": by_query_type_totals,
         "byClient": dict(client_counts),
         "byRoute": dict(route_counts)

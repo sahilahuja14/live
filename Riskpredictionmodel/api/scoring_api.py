@@ -9,7 +9,15 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from ..config import get_database_name, get_mongo_uri, init_env
+from ..config import (
+    get_database_name,
+    get_live_db_name,
+    get_live_invoice_collection,
+    get_live_mongo_uri,
+    get_mongo_uri,
+    get_source_mode,
+    init_env,
+)
 
 init_env()
 
@@ -27,8 +35,9 @@ from .response_builder import (
 )
 from .settings import load_api_settings
 from ..data.segment_filters import filter_segment as _segment_filter
-from ..dbconnect import get_database
+from ..dbconnect import get_database, get_live_database
 from ..logging_config import get_logger
+from ..pipeline.live_adapter import get_live_diagnostics
 from ..pipeline.runner import score_mongo_frame
 from ..scoring.model import PRODUCTION_RISK_REGISTRY_PATH, describe_active_production_model, load_production_artifacts
 from ..scoring.performance import build_model_performance_payload
@@ -37,7 +46,6 @@ from ..scoring.performance import build_model_performance_payload
 logger = get_logger(__name__)
 SETTINGS = load_api_settings()
 router = APIRouter(tags=["risk"])
-
 
 
 def _resolve_threshold_override(segment: str) -> float | None:
@@ -59,15 +67,20 @@ _api_cache = ApiCache(
 )
 
 
-
 def _startup_checks() -> None:
-    if not get_mongo_uri():
-        raise RuntimeError("MONGO_URI is required but not set.")
-    if not get_database_name():
-        raise RuntimeError("DATABASE_NAME is required but not set.")
+    source_mode = get_source_mode()
+    if source_mode == "live_collections":
+        if not get_live_mongo_uri():
+            raise RuntimeError("LIVE_MONGO_URI is required but not set.")
+        if not get_live_db_name():
+            raise RuntimeError("LIVE_DB_NAME is required but not set.")
+    else:
+        if not get_mongo_uri():
+            raise RuntimeError("MONGO_URI is required but not set.")
+        if not get_database_name():
+            raise RuntimeError("DATABASE_NAME is required but not set.")
     load_production_artifacts()
-    logger.info("Startup checks completed successfully")
-
+    logger.info("Startup checks completed successfully source_mode=%s", source_mode)
 
 
 def _check_mongo_live() -> bool:
@@ -75,7 +88,16 @@ def _check_mongo_live() -> bool:
         get_database().command("ping")
         return True
     except Exception:
-        logger.warning("MongoDB ping failed", exc_info=True)
+        logger.warning("Risk.Main MongoDB ping failed", exc_info=True)
+        return False
+
+
+def _check_live_mongo_live() -> bool:
+    try:
+        get_live_database().command("ping")
+        return True
+    except Exception:
+        logger.warning("Live MongoDB ping failed", exc_info=True)
         return False
 
 
@@ -93,10 +115,8 @@ def _prepare_history_frame(force_refresh: bool = False) -> pd.DataFrame:
     return _api_cache.load_full_dataset(force_refresh=force_refresh)
 
 
-
 def _enrich_with_customer_history(df: pd.DataFrame, force_refresh: bool = False) -> pd.DataFrame:
     return _api_cache.enrich_with_customer_history(df, force_refresh=force_refresh)
-
 
 
 def build_scored_frame(segment: str, limit: int | None = None, customer_id: str | None = None, force_refresh: bool = False) -> pd.DataFrame:
@@ -120,7 +140,6 @@ def build_scored_frame(segment: str, limit: int | None = None, customer_id: str 
         scoring_context=f"live_mongo:{segment.lower()}",
     )
     return _response_from_raw(segment_df, scored)
-
 
 
 def build_scored_dataset(segment: str, limit: int | None = None, customer_id: str | None = None, force_refresh: bool = False):
@@ -323,10 +342,20 @@ def health():
     try:
         snapshot = _api_cache.snapshot(now=time())
         descriptor = describe_active_production_model()
-        mongo_live = _check_mongo_live()
+        source_mode = get_source_mode()
+        risk_main_ping = bool(get_mongo_uri() and get_database_name()) and _check_mongo_live()
+        live_ping = bool(get_live_mongo_uri() and get_live_db_name()) and _check_live_mongo_live()
+        active_ping = live_ping if source_mode == "live_collections" else risk_main_ping
+        live_diag = get_live_diagnostics()
         payload = {
-            "status": "ok" if mongo_live else "degraded",
-            "mongo": "ok" if mongo_live else "unreachable",
+            "status": "ok" if active_ping else "degraded",
+            "mongo": "ok" if active_ping else "unreachable",
+            "source_mode": source_mode,
+            "risk_main_ping": risk_main_ping,
+            "live_ping": live_ping,
+            "live_collections_found": live_diag.get("live_collections_found", []),
+            "live_coverage": live_diag.get("coverage", {}),
+            "live_invoice_collection": get_live_invoice_collection(),
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "production_model": {
                 "model_family": descriptor["model_family"],
@@ -380,7 +409,7 @@ def health():
                 "max_consecutive_errors": _api_cache.max_consecutive_refresh_errors,
             },
         }
-        if not mongo_live:
+        if not active_ping:
             return JSONResponse(status_code=503, content=payload)
         return payload
     except HTTPException:

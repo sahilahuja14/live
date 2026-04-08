@@ -11,7 +11,7 @@ This directory contains the backend portion of the Dashboard Project, built with
 
 ### Prerequisites
 - Python (v3.11+)
-- MongoDB (Running with Replica Set enabled)
+- MongoDB
 
 ### Setup & Run
 1. **Virtual Environment**:
@@ -25,7 +25,7 @@ This directory contains the backend portion of the Dashboard Project, built with
    Create `.env`:
    ```env
    MONGO_URI=mongodb://localhost:27017/devdb?replicaSet=rs0
-   DB_NAME=devdb
+   DB_NAME=devdb,air,road,ocean and courier
    SECRET_KEY=your_secret_key
    ALLOWED_ORIGINS=http://localhost:5173
    ```

@@ -5,7 +5,7 @@ import asyncio
 MONGO_URI = os.getenv("MONGO_URI")
 DB_NAME = os.getenv("DB_NAME")
 
-MODE_DBS = {
+QUERYFOR_DBS = {
     "Air": os.getenv("AIR_DB_NAME", "air_db"),
     "Ocean": os.getenv("OCEAN_DB_NAME", "ocean_db"),
     "Road": os.getenv("ROAD_DB_NAME", "road_db"),
@@ -39,23 +39,23 @@ def get_analytics_database():
 def get_async_analytics_database():
     return get_async_database()
 
-def get_mode_database(mode: str):
-    db_name = MODE_DBS.get(mode)
+def get_queryFor_database(queryFor: str):
+    db_name = QUERYFOR_DBS.get(queryFor)
     if not db_name:
-        raise ValueError(f"Unknown mode: {mode}")
+        raise ValueError(f"Unknown queryFor: {queryFor}")
     return db.client.get_database(db_name)
 
-def get_async_mode_database(mode: str):
-    db_name = MODE_DBS.get(mode)
+def get_async_queryFor_database(queryFor: str):
+    db_name = QUERYFOR_DBS.get(queryFor)
     if not db_name:
-        raise ValueError(f"Unknown mode: {mode}")
+        raise ValueError(f"Unknown queryFor: {queryFor}")
     return db.async_client.get_database(db_name)
 
-def get_all_async_mode_databases():
-    return {mode: db.async_client.get_database(name) for mode, name in MODE_DBS.items()}
+def get_all_async_queryFor_databases():
+    return {queryFor: db.async_client.get_database(name) for queryFor, name in QUERYFOR_DBS.items()}
 
-def get_all_mode_databases():
-    return {mode: db.client.get_database(name) for mode, name in MODE_DBS.items()}
+def get_all_queryFor_databases():
+    return {queryFor: db.client.get_database(name) for queryFor, name in QUERYFOR_DBS.items()}
 
 def connect_db():
     try:

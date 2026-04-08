@@ -14,14 +14,15 @@ from fastapi.testclient import TestClient
 from pymongo.errors import ServerSelectionTimeoutError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+WORKSPACE_ROOT = PROJECT_ROOT.parent
+if str(WORKSPACE_ROOT) not in sys.path:
+    sys.path.insert(0, str(WORKSPACE_ROOT))
 
-from features.customer_aggregates import build_customer_history_aggregates
-from pipeline.risk_main import build_risk_main_manual_request_frame, build_risk_main_scoring_frame
-from scoring.model import describe_active_production_model, load_production_artifacts
-from api import scoring_api
-from api.response_builder import response_from_raw
+from Riskpredictionmodel.features.customer_aggregates import build_customer_history_aggregates
+from Riskpredictionmodel.pipeline.risk_main import build_risk_main_manual_request_frame, build_risk_main_scoring_frame
+from Riskpredictionmodel.scoring.model import describe_active_production_model, load_production_artifacts
+from Riskpredictionmodel.api import scoring_api
+from Riskpredictionmodel.api.response_builder import response_from_raw
 
 
 def _history_frame() -> pd.DataFrame:
@@ -352,7 +353,11 @@ class ProductionRiskMainTests(unittest.TestCase):
         mongo = MagicMock()
         mongo.command.return_value = {"ok": 1}
 
-        with patch.dict(os.environ, {"API_KEY": "", "DASHBOARD_JWT_SECRET": ""}, clear=False), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
+        with patch.dict(
+            os.environ,
+            {"API_KEY": "", "DASHBOARD_JWT_SECRET": "", "SECRET_KEY": ""},
+            clear=False,
+        ), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
             scoring_api._api_cache, "stop", return_value=None
         ), patch.object(scoring_api._api_cache, "load_full_dataset", return_value=history), patch.object(
             scoring_api, "get_database", return_value=mongo
@@ -427,7 +432,11 @@ class ProductionRiskMainTests(unittest.TestCase):
 
     def test_customer_snapshot_id_validation(self):
         history = _history_frame()
-        with patch.dict(os.environ, {"API_KEY": "", "DASHBOARD_JWT_SECRET": ""}, clear=False), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
+        with patch.dict(
+            os.environ,
+            {"API_KEY": "", "DASHBOARD_JWT_SECRET": "", "SECRET_KEY": ""},
+            clear=False,
+        ), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
             scoring_api._api_cache, "stop", return_value=None
         ), patch.object(scoring_api._api_cache, "load_full_dataset", return_value=history):
             with TestClient(scoring_api.app) as client:
@@ -510,11 +519,15 @@ class ProductionRiskMainTests(unittest.TestCase):
 
     def test_score_returns_500_when_model_file_missing(self):
         history = _history_frame()
-        with patch.dict(os.environ, {"API_KEY": "", "DASHBOARD_JWT_SECRET": ""}, clear=False), patch.object(scoring_api, "_startup_checks", return_value=None), patch.object(
+        with patch.dict(
+            os.environ,
+            {"API_KEY": "", "DASHBOARD_JWT_SECRET": "", "SECRET_KEY": ""},
+            clear=False,
+        ), patch.object(scoring_api, "_startup_checks", return_value=None), patch.object(
             scoring_api._api_cache, "start", return_value=None
         ), patch.object(scoring_api._api_cache, "stop", return_value=None), patch.object(
             scoring_api._api_cache, "load_full_dataset", return_value=history
-        ), patch("scoring.model.load_production_artifacts", side_effect=FileNotFoundError("models/production/missing.pkl")):
+        ), patch("Riskpredictionmodel.scoring.model.load_production_artifacts", side_effect=FileNotFoundError("models/production/missing.pkl")):
             with TestClient(scoring_api.app) as client:
                 response = client.post(
                     "/score/air",
@@ -531,7 +544,11 @@ class ProductionRiskMainTests(unittest.TestCase):
 
     def test_score_all_respects_page_max(self):
         history = _history_frame()
-        with patch.dict(os.environ, {"API_KEY": "", "DASHBOARD_JWT_SECRET": ""}, clear=False), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
+        with patch.dict(
+            os.environ,
+            {"API_KEY": "", "DASHBOARD_JWT_SECRET": "", "SECRET_KEY": ""},
+            clear=False,
+        ), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
             scoring_api._api_cache, "stop", return_value=None
         ), patch.object(scoring_api._api_cache, "load_full_dataset", return_value=history):
             with TestClient(scoring_api.app) as client:
@@ -544,7 +561,11 @@ class ProductionRiskMainTests(unittest.TestCase):
     def test_health_returns_503_when_mongo_unreachable(self):
         mongo = MagicMock()
         mongo.command.side_effect = ServerSelectionTimeoutError("mongo down")
-        with patch.dict(os.environ, {"API_KEY": "", "DASHBOARD_JWT_SECRET": ""}, clear=False), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
+        with patch.dict(
+            os.environ,
+            {"API_KEY": "", "DASHBOARD_JWT_SECRET": "", "SECRET_KEY": ""},
+            clear=False,
+        ), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
             scoring_api._api_cache, "stop", return_value=None
         ), patch.object(scoring_api, "get_database", return_value=mongo):
             with TestClient(scoring_api.app) as client:
@@ -555,7 +576,11 @@ class ProductionRiskMainTests(unittest.TestCase):
                 self.assertEqual(body["mongo"], "unreachable")
 
     def test_score_request_rejects_negative_amount(self):
-        with patch.dict(os.environ, {"API_KEY": "", "DASHBOARD_JWT_SECRET": ""}, clear=False), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
+        with patch.dict(
+            os.environ,
+            {"API_KEY": "", "DASHBOARD_JWT_SECRET": "", "SECRET_KEY": ""},
+            clear=False,
+        ), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
             scoring_api._api_cache, "stop", return_value=None
         ):
             with TestClient(scoring_api.app) as client:
@@ -566,7 +591,11 @@ class ProductionRiskMainTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 422)
 
     def test_customer_score_rejects_empty_customer_id(self):
-        with patch.dict(os.environ, {"API_KEY": "", "DASHBOARD_JWT_SECRET": ""}, clear=False), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
+        with patch.dict(
+            os.environ,
+            {"API_KEY": "", "DASHBOARD_JWT_SECRET": "", "SECRET_KEY": ""},
+            clear=False,
+        ), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
             scoring_api._api_cache, "stop", return_value=None
         ):
             with TestClient(scoring_api.app) as client:
@@ -578,7 +607,11 @@ class ProductionRiskMainTests(unittest.TestCase):
         self.assertTrue(result.empty)
 
     def test_model_performance_degrades_when_snapshot_unavailable(self):
-        with patch.dict(os.environ, {"API_KEY": "", "DASHBOARD_JWT_SECRET": ""}, clear=False), patch.object(scoring_api, "_startup_checks", return_value=None), patch.object(
+        with patch.dict(
+            os.environ,
+            {"API_KEY": "", "DASHBOARD_JWT_SECRET": "", "SECRET_KEY": ""},
+            clear=False,
+        ), patch.object(scoring_api, "_startup_checks", return_value=None), patch.object(
             scoring_api._api_cache, "start", return_value=None
         ), patch.object(scoring_api._api_cache, "stop", return_value=None), patch.object(
             scoring_api._api_cache, "get_scored_segment_frame", side_effect=ServerSelectionTimeoutError("mongo down")
