@@ -47,3 +47,20 @@ def get_production_risk_db_name() -> str:
 
 def get_production_risk_collection() -> str:
     return _env_value("PRODUCTION_RISK_COLLECTION") or "Main"
+
+
+def get_source_mode() -> str:
+    mode = (_env_value("PRODUCTION_RISK_SOURCE_MODE") or "risk_main").strip().lower()
+    return "live_collections" if mode == "live_collections" else "risk_main"
+
+
+def get_live_mongo_uri() -> str | None:
+    return _env_value("LIVE_MONGO_URI")
+
+
+def get_live_db_name() -> str | None:
+    return _env_value("LIVE_DB_NAME")
+
+
+def get_live_invoice_collection() -> str:
+    return _env_value("LIVE_COLLECTION_INVOICES") or "invoicemasters"
