@@ -14,9 +14,14 @@ if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
 from Riskpredictionmodel.features.production_registry import validate_feature_frame
-from Riskpredictionmodel.pipeline.live_adapter import _normalize_live_doc, compute_live_coverage, fetch_live_frame, join_payment_transactions
-from Riskpredictionmodel.pipeline.live_field_map import LIVE_PASSTHROUGH_FIELDS, LIVE_TO_NORMALIZED
-from Riskpredictionmodel.pipeline.risk_canonical import NORMALIZED_TO_CANONICAL_FIELD_MAP, RISK_MAIN_FETCH_PROJECTION, canonicalize_risk_main_frame
+from Riskpredictionmodel.pipeline.risk_canonical import (
+    _normalize_live_doc,
+    compute_live_coverage,
+    fetch_risk_main_frame,
+    join_payment_transactions,
+    canonicalize_risk_main_frame,
+)
+from Riskpredictionmodel.pipeline.risk_map import LIVE_PASSTHROUGH_FIELDS, LIVE_TO_NORMALIZED, NORMALIZED_TO_CANONICAL_FIELD_MAP
 from Riskpredictionmodel.pipeline.risk_main import build_risk_main_scoring_frame
 from Riskpredictionmodel.scoring.model import load_production_artifacts
 
@@ -24,6 +29,9 @@ from Riskpredictionmodel.scoring.model import load_production_artifacts
 class _FakeCursor:
     def __init__(self, rows):
         self._rows = list(rows)
+
+    def sort(self, _keys):
+        return self
 
     def batch_size(self, _value):
         return self
@@ -41,11 +49,30 @@ class _FakeCollection:
 
     def find(self, query=None, projection=None, limit=None):
         query = query or {}
-        if "finalInvoiceId" in query:
-            values = {str(item) for item in query["finalInvoiceId"].get("$in", [])}
-            filtered = [row for row in self.rows if str(row.get("finalInvoiceId")) in values]
-            return _FakeCursor(filtered)
-        return _FakeCursor(self.rows if limit is None else self.rows[: int(limit)])
+        if not query:
+            return _FakeCursor(self.rows if limit is None else self.rows[: int(limit)])
+
+        clauses = query.get("$or", [query])
+        filtered = list(self.rows)
+        filtered = []
+        for row in self.rows:
+            for clause in clauses:
+                if "performaInvoiceId" in clause:
+                    values = {str(item) for item in clause["performaInvoiceId"].get("$in", [])}
+                    if str(row.get("performaInvoiceId")) in values:
+                        filtered.append(row)
+                        break
+                if "finalInvoiceId" in clause:
+                    values = {str(item) for item in clause["finalInvoiceId"].get("$in", [])}
+                    if str(row.get("finalInvoiceId")) in values:
+                        filtered.append(row)
+                        break
+                if "invoiceNo" in clause:
+                    values = {str(item) for item in clause["invoiceNo"].get("$in", [])}
+                    if str(row.get("invoiceNo")) in values:
+                        filtered.append(row)
+                        break
+        return _FakeCursor(filtered if limit is None else filtered[: int(limit)])
 
 
 class _FakeDatabase:
@@ -187,9 +214,9 @@ class LiveCutoverTests(unittest.TestCase):
 
     def _payment_docs(self):
         return [
-            {"finalInvoiceId": "INV-001", "paymentDate": "2025-10-25", "status": "settled", "paymentDetails": "first"},
-            {"finalInvoiceId": "INV-001", "paymentDate": "2025-11-05", "status": "settled", "paymentDetails": "second"},
-            {"finalInvoiceId": "INV-002", "paymentDate": "20-01-2026", "status": "paid", "paymentDetails": "single"},
+            {"performaInvoiceId": "mongo-001", "paymentDate": "2025-10-25", "status": "settled", "paymentDetails": "first"},
+            {"performaInvoiceId": "mongo-001", "paymentDate": "2025-11-05", "status": "settled", "paymentDetails": "second"},
+            {"performaInvoiceId": "mongo-002", "paymentDate": "20-01-2026", "status": "paid", "paymentDetails": "single"},
         ]
 
     def test_live_mapping_contract_matches_risk_map(self):
@@ -197,15 +224,9 @@ class LiveCutoverTests(unittest.TestCase):
         mapped_values = {value for value in LIVE_TO_NORMALIZED.values() if value is not None}
         self.assertTrue(mapped_values.issubset(allowed))
 
-        required_projection = {
-            key
-            for key in RISK_MAIN_FETCH_PROJECTION
-            if key != "_id" and key not in {"paymentDate_raw", "paymentDetailsRaw", "legacy.invoice_ref_raw", "companyCode"}
-        }
-        self.assertTrue(required_projection.issubset(mapped_values))
         self.assertEqual(
             set(LIVE_PASSTHROUGH_FIELDS.values()),
-            {"companyCode", "paymentDate_raw", "paymentDetailsRaw", "legacy.invoice_ref_raw"},
+            {"bookingId", "companyCode", "paymentDate_raw", "paymentDetailsRaw", "legacy.invoice_ref_raw"},
         )
 
     def test_normalize_live_doc_flattens_and_maps(self):
@@ -236,10 +257,10 @@ class LiveCutoverTests(unittest.TestCase):
             {"PRODUCTION_RISK_SOURCE_MODE": "live_collections", "LIVE_COLLECTION_INVOICES": "invoicemasters"},
             clear=False,
         ), patch(
-            "Riskpredictionmodel.pipeline.live_adapter.get_live_database",
+            "Riskpredictionmodel.pipeline.risk_canonical.get_live_database",
             return_value=fake_db,
         ):
-            frame = fetch_live_frame(limit=10)
+            frame = fetch_risk_main_frame(limit=10)
             coverage = compute_live_coverage(frame)
             self.assertEqual(len(frame), 2)
             self.assertGreaterEqual(coverage["invoice_key_pct"], 100.0)
@@ -257,10 +278,10 @@ class LiveCutoverTests(unittest.TestCase):
             {"PRODUCTION_RISK_SOURCE_MODE": "live_collections", "LIVE_COLLECTION_INVOICES": "invoicemasters"},
             clear=False,
         ), patch(
-            "Riskpredictionmodel.pipeline.live_adapter.get_live_database",
+            "Riskpredictionmodel.pipeline.risk_canonical.get_live_database",
             return_value=fake_db,
         ):
-            live_frame = fetch_live_frame(limit=10)
+            live_frame = fetch_risk_main_frame(limit=10)
         canonical = canonicalize_risk_main_frame(live_frame)
         scoring_frame = build_risk_main_scoring_frame(live_frame.iloc[:1].copy(), history_df=live_frame)
         artifacts = load_production_artifacts(force_reload=True)

@@ -135,7 +135,7 @@ PRODUCTION_RISK_REQUEST_FIELD_MAP = {
     "termsDays": "paymentTerms",
     "paymentTerms": "paymentTerms",
     "taxableTotalAmountB": "taxableTotalAmountB",
-    "invoiceAmount": "taxableTotalAmountB",
+    "invoiceAmount": "totalAmountC",
     "totalAmountB": "totalAmountB",
     "grossAmount": "totalAmountB",
     "documentType": "invoiceType",
@@ -266,6 +266,156 @@ PRODUCTION_RISK_NON_EXPLANATORY_FEATURES = {
     "customer_currency_key",
     "customer_terms_key",
 }
+
+
+LIVE_PROFILE_COLLECTIONS = (
+    "invoicemasters",
+    "customermasters",
+    "queries",
+    "bookings",
+    "gateins",
+    "clearencedocs",
+    "paymenttransactions",
+)
+
+
+LIVE_TO_NORMALIZED: dict[str, str | None] = {
+    # invoice domain
+    "invoiceNo": "invoiceNo",
+    "invoiceNumber": "invoiceNo",
+    "invoice.number": "invoiceNo",
+    "invoiceDate": "invoiceDate",
+    "date": "invoiceDate",
+    "invoice.date": "invoiceDate",
+    "invoiceDueDate": "invoiceDueDate",
+    "dueDate": "invoiceDueDate",
+    "paymentTerms": "paymentTerms",
+    "termsDays": "paymentTerms",
+    "termdays": "paymentTerms",
+    "terms": "paymentTerms",
+    "terms.days": "paymentTerms",
+    "selectedCustomerCurrency": "selectedCustomerCurrency",
+    "currency": "selectedCustomerCurrency",
+    "currencyCode": "selectedCustomerCurrency",
+    "taxableTotalAmountB": "taxableTotalAmountB",
+    "taxableAmount": "taxableTotalAmountB",
+    "invoice.taxableAmount": "taxableTotalAmountB",
+    "totalAmountB": "totalAmountB",
+    "totalAmount": "totalAmountB",
+    "invoice.totalAmount": "totalAmountB",
+    "paidStatus": "paidStatus",
+    "status": "paidStatus",
+    "invoiceType": "invoiceType",
+    "documentType": "invoiceType",
+    "executionDate": "executionDate",
+    "paidAmount": "paidAmount",
+    "tdsAmount": "tdsAmount",
+    "ytdExposure": "ytdExposure",
+    "receivables.notDueAmount": "receivables.notDueAmount",
+    "receivables.notDue": "receivables.notDueAmount",
+    "receivables.bucket0To15Amount": "receivables.bucket0To15Amount",
+    "receivables.0to15": "receivables.bucket0To15Amount",
+    "receivables.bucket16To30Amount": "receivables.bucket16To30Amount",
+    "receivables.16to30": "receivables.bucket16To30Amount",
+    "receivables.bucket31To45Amount": "receivables.bucket31To45Amount",
+    "receivables.31to45": "receivables.bucket31To45Amount",
+    "receivables.bucket46To60Amount": "receivables.bucket46To60Amount",
+    "receivables.46to60": "receivables.bucket46To60Amount",
+    "receivables.bucket60To90Amount": "receivables.bucket60To90Amount",
+    "receivables.60to90": "receivables.bucket60To90Amount",
+    "receivables.bucketAbove90Amount": "receivables.bucketAbove90Amount",
+    "receivables.above90": "receivables.bucketAbove90Amount",
+    # customer domain
+    "customer.customerId": "customer.customerId",
+    "customer.id": "customer.customerId",
+    "customerId": "customer.customerId",
+    "customer.customerName": "customer.customerName",
+    "customer.name": "customer.customerName",
+    "customerName": "customer.customerName",
+    "customer.customerAccountType": "customer.customerAccountType",
+    "customer.accountType": "customer.customerAccountType",
+    "customer.customerType": "customer.customerType",
+    "customer.type": "customer.customerType",
+    "customer.category": "customer.category",
+    "customer.onboardDate": "customer.onboardDate",
+    "customer.onboardingDate": "customer.onboardDate",
+    # admin and operational domain
+    "salesPersonName": "salesPersonName",
+    "salesOwner": "salesPersonName",
+    "adminData.salesPerson": "salesPersonName",
+    "shipmentDetails.queryFor": "shipmentDetails.queryFor",
+    "shipment.queryFor": "shipmentDetails.queryFor",
+    "shipmentMode": "shipmentDetails.queryFor",
+    "shipmentDetails.accountType": "shipmentDetails.accountType",
+    "shipment.accountType": "shipmentDetails.accountType",
+    "shipmentDetails.incoTerms": "shipmentDetails.incoTerms",
+    "shipment.incoTerms": "shipmentDetails.incoTerms",
+    "shipmentDetails.commodity": "shipmentDetails.commodity",
+    "shipment.commodity": "shipmentDetails.commodity",
+    "shipmentDetails.bookingNo": "operational.bookingNo",
+    "shipment.bookingNo": "operational.bookingNo",
+    "shipmentDetails.shippingBillNo": "operational.shippingBillNo",
+    "shipmentDetails.grossWeight": "shipmentDetails.grossWeight",
+    "shipment.grossWeight": "shipmentDetails.grossWeight",
+    "shipmentDetails.chargeableWeight": "shipmentDetails.chargeableWeight",
+    "shipment.chargeableWeight": "shipmentDetails.chargeableWeight",
+    "shipmentDetails.volumeWeight": "shipmentDetails.volumeWeight",
+    "shipment.volumeWeight": "shipmentDetails.volumeWeight",
+    "shipmentDetails.noOfContainers": "shipmentDetails.noOfContainers",
+    "shipment.noOfContainers": "shipmentDetails.noOfContainers",
+    "shipmentDetails.originCity": "shipmentDetails.originCity",
+    "shipment.originCity": "shipmentDetails.originCity",
+    "shipmentDetails.originState": "shipmentDetails.originState",
+    "shipment.originState": "shipmentDetails.originState",
+    "shipmentDetails.originCountry": "shipmentDetails.originCountry",
+    "shipment.originCountry": "shipmentDetails.originCountry",
+    "shipmentDetails.destinationCity": "shipmentDetails.destinationCity",
+    "shipment.destinationCity": "shipmentDetails.destinationCity",
+    "shipmentDetails.destinationState": "shipmentDetails.destinationState",
+    "shipment.destinationState": "shipmentDetails.destinationState",
+    "shipmentDetails.destinationCountry": "shipmentDetails.destinationCountry",
+    "shipment.destinationCountry": "shipmentDetails.destinationCountry",
+    "operational.jobNo": "operational.jobNo",
+    "operational.bookingNo": "operational.bookingNo",
+    "operational.clearanceStatus": "operational.clearanceStatus",
+    "operational.gateInStatus": "operational.gateInStatus",
+    "operational.lastTrackingStatus": "operational.lastTrackingStatus",
+    "operational.lastTrackingLocation": "operational.lastTrackingLocation",
+    "operational.shippingBillNo": "operational.shippingBillNo",
+    "operational.containerNo": "operational.containerNo",
+    # payment domain
+    "paymentDate": "paymentDate",
+    "invoice.paymentDate": "paymentDate",
+    "paymentInstallmentCount": "paymentInstallmentCount",
+    "partialPaymentFlag": "partialPaymentFlag",
+}
+
+
+LIVE_PASSTHROUGH_FIELDS: dict[str, str] = {
+    "bookingId": "bookingId",
+    "shipmentDetails.bookingId": "bookingId",
+    "companyCode": "companyCode",
+    "company": "companyCode",
+    "paymentDate_raw": "paymentDate_raw",
+    "paymentDateRaw": "paymentDate_raw",
+    "paymentDetailsRaw": "paymentDetailsRaw",
+    "paymentDetails": "paymentDetailsRaw",
+    "legacy.invoice_ref_raw": "legacy.invoice_ref_raw",
+    "invoiceRef": "legacy.invoice_ref_raw",
+}
+
+
+_UNMAPPED_LIVE_FIELDS = [
+    value
+    for value in LIVE_TO_NORMALIZED.values()
+    if value is not None and value not in NORMALIZED_TO_CANONICAL_FIELD_MAP
+]
+assert not _UNMAPPED_LIVE_FIELDS, (
+    "LIVE_TO_NORMALIZED maps to fields that are missing from "
+    "NORMALIZED_TO_CANONICAL_FIELD_MAP: "
+    f"{_UNMAPPED_LIVE_FIELDS}. "
+    "Add the missing normalized keys in risk_map.py before importing the pipeline."
+)
 
 
 

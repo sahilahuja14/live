@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from time import time
@@ -10,12 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from ..config import (
-    get_database_name,
     get_live_db_name,
     get_live_invoice_collection,
     get_live_mongo_uri,
-    get_mongo_uri,
-    get_source_mode,
     init_env,
 )
 
@@ -27,18 +26,21 @@ from .models import CustomerScoreRequest, ScoreRequest
 from .request_builder import build_manual_request_frame as _build_manual_request_frame
 from .response_builder import (
     _build_customer_summary_payload,
+    _build_scored_summary,
     _filter_customer_rows,
     _normalize_response_records,
     _shape_response_frame,
     _ts_to_iso,
+    build_customer_history_payload,
+    build_customer_portfolio_frame,
     response_from_raw as _response_from_raw,
 )
 from .settings import load_api_settings
 from ..data.segment_filters import filter_segment as _segment_filter
-from ..dbconnect import get_database, get_live_database
+from ..dbconnect import get_live_database
 from ..logging_config import get_logger
-from ..pipeline.live_adapter import get_live_diagnostics
-from ..pipeline.runner import score_mongo_frame
+from ..pipeline.risk_canonical import canonicalize_risk_main_frame, get_live_diagnostics
+from ..pipeline.runner import score_mongo_frame, score_mongo_frame_with_details
 from ..scoring.model import PRODUCTION_RISK_REGISTRY_PATH, describe_active_production_model, load_production_artifacts
 from ..scoring.performance import build_model_performance_payload
 
@@ -46,6 +48,10 @@ from ..scoring.performance import build_model_performance_payload
 logger = get_logger(__name__)
 SETTINGS = load_api_settings()
 router = APIRouter(tags=["risk"])
+
+# Keep a compatibility alias so existing tests and callers that still patch
+# get_database do not break while the runtime stays live-db only.
+get_database = get_live_database
 
 
 def _resolve_threshold_override(segment: str) -> float | None:
@@ -68,33 +74,17 @@ _api_cache = ApiCache(
 
 
 def _startup_checks() -> None:
-    source_mode = get_source_mode()
-    if source_mode == "live_collections":
-        if not get_live_mongo_uri():
-            raise RuntimeError("LIVE_MONGO_URI is required but not set.")
-        if not get_live_db_name():
-            raise RuntimeError("LIVE_DB_NAME is required but not set.")
-    else:
-        if not get_mongo_uri():
-            raise RuntimeError("MONGO_URI is required but not set.")
-        if not get_database_name():
-            raise RuntimeError("DATABASE_NAME is required but not set.")
+    if not get_live_mongo_uri():
+        raise RuntimeError("LIVE_MONGO_URI is required but not set.")
+    if not get_live_db_name():
+        raise RuntimeError("LIVE_DB_NAME is required but not set.")
     load_production_artifacts()
-    logger.info("Startup checks completed successfully source_mode=%s", source_mode)
-
-
-def _check_mongo_live() -> bool:
-    try:
-        get_database().command("ping")
-        return True
-    except Exception:
-        logger.warning("Risk.Main MongoDB ping failed", exc_info=True)
-        return False
+    logger.info("Startup checks completed successfully source_mode=live_collections")
 
 
 def _check_live_mongo_live() -> bool:
     try:
-        get_live_database().command("ping")
+        get_database().command("ping")
         return True
     except Exception:
         logger.warning("Live MongoDB ping failed", exc_info=True)
@@ -117,6 +107,141 @@ def _prepare_history_frame(force_refresh: bool = False) -> pd.DataFrame:
 
 def _enrich_with_customer_history(df: pd.DataFrame, force_refresh: bool = False) -> pd.DataFrame:
     return _api_cache.enrich_with_customer_history(df, force_refresh=force_refresh)
+
+
+def _encode_cursor(payload: dict) -> str:
+    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return base64.urlsafe_b64encode(encoded).decode("utf-8")
+
+
+def _decode_cursor(cursor: str) -> dict:
+    try:
+        decoded = base64.urlsafe_b64decode(str(cursor).encode("utf-8")).decode("utf-8")
+        payload = json.loads(decoded)
+    except Exception as exc:
+        raise ValueError(f"Invalid cursor: {type(exc).__name__}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid cursor payload.")
+    return payload
+
+
+def _feature_quality_payload(details, input_rows: int) -> dict:
+    validation = details.validation
+    return {
+        "feature_validation_passed": validation.is_valid,
+        "scored_invoice_rows": int(len(details.scored_frame)),
+        "dropped_invoice_rows": max(int(input_rows) - int(len(details.scored_frame)), 0),
+        "missing_feature_count": int(len(validation.missing_columns) + len(validation.missing_features)),
+        "invalid_object_feature_count": int(len(validation.invalid_object_features)),
+        "invalid_datetime_feature_count": int(len(validation.invalid_datetime_features)),
+    }
+
+
+def _history_preview_limit(payload: CustomerScoreRequest) -> int:
+    if payload.limit is not None:
+        return min(int(payload.limit), 100)
+    return int(payload.historyPreviewLimit)
+
+
+def _load_segment_history_frame(segment: str, *, force_refresh: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
+    full_df = _prepare_history_frame(force_refresh=force_refresh)
+    segment_df = _segment_filter(full_df, segment, allow_all=True, missing="input")
+    return full_df, segment_df
+
+
+def _load_customer_invoice_frame(
+    segment: str,
+    customer_id: str,
+    *,
+    force_refresh: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame, int]:
+    full_df = _prepare_history_frame(force_refresh=force_refresh)
+    customer_df = _filter_customer_rows(full_df, customer_id)
+    if customer_df.empty:
+        return full_df, pd.DataFrame(), 0
+
+    segment_customer_df = _segment_filter(customer_df, segment, allow_all=True, missing="input")
+    customer_df = _enrich_with_customer_history(customer_df, force_refresh=force_refresh)
+    return full_df, customer_df.reset_index(drop=True), int(len(segment_customer_df))
+
+
+def _feature_snapshot_for_rows(scoring_frame: pd.DataFrame, page_indices: list[int], expected_features: list[str]) -> list[dict]:
+    if scoring_frame.empty or not page_indices:
+        return []
+    columns = [column for column in ["invoice_key", *expected_features] if column in scoring_frame.columns]
+    if not columns:
+        return []
+    snapshot = scoring_frame.iloc[page_indices][columns].copy().reset_index(drop=True)
+    return _normalize_response_records(snapshot)
+
+
+def _canonical_snapshot_for_rows(raw_frame: pd.DataFrame, page_indices: list[int]) -> list[dict]:
+    if raw_frame.empty or not page_indices:
+        return []
+    canonical = canonicalize_risk_main_frame(raw_frame.copy())
+    if canonical.empty:
+        return []
+    canonical = canonical.iloc[page_indices].copy().reset_index(drop=True)
+    return _normalize_response_records(canonical)
+
+
+def _score_customer_history(
+    *,
+    segment: str,
+    customer_id: str,
+    force_refresh: bool,
+) -> dict:
+    history_df, customer_df, segment_invoice_rows = _load_customer_invoice_frame(
+        segment,
+        customer_id,
+        force_refresh=force_refresh,
+    )
+    if customer_df.empty:
+        return {
+            "history_df": history_df,
+            "customer_df": customer_df,
+            "segment_invoice_rows": 0,
+            "records": [],
+            "scoring_frame": pd.DataFrame(),
+            "feature_quality": {
+                "feature_validation_passed": True,
+                "scored_invoice_rows": 0,
+                "dropped_invoice_rows": 0,
+                "missing_feature_count": 0,
+                "invalid_object_feature_count": 0,
+                "invalid_datetime_feature_count": 0,
+            },
+        }
+
+    details = score_mongo_frame_with_details(
+        customer_df,
+        history_df=history_df,
+        top_n=5,
+        approval_threshold_override=_resolve_threshold_override(segment),
+        scoring_context=f"live_customer:{segment.lower()}:{customer_id}",
+    )
+    merged = _response_from_raw(customer_df, details.scored_frame)
+    shaped = _shape_response_frame(merged, response_mode="lean")
+    records = _normalize_response_records(shaped)
+    return {
+        "history_df": history_df,
+        "customer_df": customer_df,
+        "segment_invoice_rows": int(segment_invoice_rows),
+        "records": records,
+        "scoring_frame": details.scoring_frame.reset_index(drop=True),
+        "feature_quality": _feature_quality_payload(details, input_rows=len(customer_df)),
+    }
+
+
+def _customer_records_page(frame: pd.DataFrame, *, page_size: int, offset: int) -> tuple[pd.DataFrame, int, str | None]:
+    total_available = int(len(frame))
+    page_df = frame.iloc[offset : offset + int(page_size)].copy().reset_index(drop=True)
+    returned = int(len(page_df))
+    next_offset = offset + returned
+    next_cursor = None
+    if next_offset < total_available:
+        next_cursor = str(next_offset)
+    return page_df, total_available, next_cursor
 
 
 def build_scored_frame(segment: str, limit: int | None = None, customer_id: str | None = None, force_refresh: bool = False) -> pd.DataFrame:
@@ -222,43 +347,287 @@ def score_all(
 
 @router.post("/score-customer/{segment}")
 def score_customer(segment: str, payload: CustomerScoreRequest, _auth: None = Depends(require_api_key)):
-    logger.debug("Customer scoring request started segment=%s snapshot=%s", segment, bool(payload.snapshotId))
+    logger.debug("Customer scoring request started segment=%s", segment)
     try:
         customer_id = str(payload.customerId).strip()
         if not customer_id:
             raise HTTPException(status_code=400, detail="customer_id must be provided")
-        if payload.limit < 1:
-            raise HTTPException(status_code=400, detail="limit must be >= 1")
-
-        limit = min(int(payload.limit), 5000)
         descriptor = describe_active_production_model()
-        snapshot_id = str(payload.snapshotId or "").strip() or None
-        if snapshot_id:
-            snapshot_df = _api_cache.get_snapshot_customer_frame(
-                snapshot_id=snapshot_id,
-                segment=segment,
-                customer_id=customer_id,
-                limit=limit,
-            )
-            records = _normalize_response_records(snapshot_df)
-        else:
-            records = build_scored_dataset(segment=segment, limit=limit, customer_id=customer_id)
+        preview_limit = _history_preview_limit(payload)
+        customer_result = _score_customer_history(
+            segment=segment,
+            customer_id=customer_id,
+            force_refresh=True,
+        )
+        records = customer_result["records"]
+        if not records:
+            raise HTTPException(status_code=404, detail="No invoices found for the requested customer.")
         response = _build_customer_summary_payload(
             records,
             segment=segment,
             customer_id=customer_id,
-            limit=limit,
+            history_preview_limit=preview_limit,
             model_type=descriptor["model_type"],
+            feature_quality=customer_result["feature_quality"],
+            include_history_preview=payload.includeHistoryPreview,
+            include_invoice_top_features=payload.includeTopInvoiceFeatures,
+            segment_invoice_rows=customer_result["segment_invoice_rows"],
+            approval_threshold_override=_resolve_threshold_override(segment),
         )
         logger.debug("Customer scoring request completed segment=%s rows=%s", segment, response.get("invoice_rows_scored"))
         return response
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=f"Customer snapshot validation failed: {exc}")
+        raise HTTPException(status_code=422, detail=f"Customer scoring validation failed: {exc}")
     except Exception:
         logger.exception("Customer scoring failed for segment=%s", segment)
         raise HTTPException(status_code=500, detail="Customer scoring failed. Check server logs.")
+
+
+@router.get("/score-customers/{segment}")
+def score_customers(
+    segment: str,
+    limit: int = SETTINGS.score_all_page_default,
+    cursor: str | None = None,
+    refresh: bool = False,
+    _auth: None = Depends(require_api_key),
+):
+    logger.debug("Customer list request started segment=%s limit=%s cursor=%s refresh=%s", segment, limit, bool(cursor), refresh)
+    try:
+        if limit < 1:
+            raise HTTPException(status_code=400, detail="limit must be >= 1")
+        if cursor and refresh:
+            raise HTTPException(status_code=400, detail="refresh cannot be combined with cursor")
+
+        # limit here is explicitly a customer page size, not an invoice row limit.
+        customer_page_size = min(int(limit), SETTINGS.score_all_page_max)
+        offset = 0
+        expected_snapshot_id = None
+        if cursor:
+            cursor_payload = _decode_cursor(cursor)
+            if str(cursor_payload.get("segment") or "").strip().lower() != str(segment or "").strip().lower():
+                raise HTTPException(status_code=422, detail="Cursor segment does not match request segment.")
+            if int(cursor_payload.get("page_size") or 0) != customer_page_size:
+                raise HTTPException(status_code=422, detail="Cursor page size does not match request limit.")
+            offset = max(int(cursor_payload.get("offset") or 0), 0)
+            expected_snapshot_id = str(cursor_payload.get("snapshot_id") or "").strip() or None
+
+        snapshot_frame, snapshot_meta = _api_cache.get_scored_segment_frame(segment=segment, refresh=refresh and not cursor)
+        snapshot_id = str(snapshot_meta.get("snapshot_id") or "").strip()
+        if expected_snapshot_id and snapshot_id != expected_snapshot_id:
+            raise HTTPException(status_code=422, detail="Snapshot changed. Restart customer pagination without a cursor.")
+
+        segment_invoice_counts: dict[str, int] | None = None
+        customer_source_frame = snapshot_frame
+        if "customer.customerId" in snapshot_frame.columns:
+            segment_customer_frame = snapshot_frame.copy()
+            segment_customer_frame["customer.customerId"] = (
+                segment_customer_frame["customer.customerId"].fillna("").astype(str).str.strip()
+            )
+            segment_customer_frame = segment_customer_frame[
+                segment_customer_frame["customer.customerId"] != ""
+            ].copy()
+            if not segment_customer_frame.empty:
+                segment_invoice_counts = (
+                    segment_customer_frame.groupby("customer.customerId").size().astype(int).to_dict()
+                )
+                if str(segment or "").strip().lower() != "all":
+                    all_frame, all_snapshot_meta = _api_cache.get_scored_segment_frame(segment="all", refresh=False)
+                    all_snapshot_id = str(all_snapshot_meta.get("snapshot_id") or "").strip()
+                    if all_snapshot_id and snapshot_id and all_snapshot_id != snapshot_id:
+                        logger.warning(
+                            "Customer list snapshot ids differ between segment=%s and all snapshot segment_id=%s all_id=%s",
+                            segment,
+                            snapshot_id,
+                            all_snapshot_id,
+                        )
+                    all_customer_frame = all_frame.copy()
+                    if "customer.customerId" in all_customer_frame.columns:
+                        all_customer_frame["customer.customerId"] = (
+                            all_customer_frame["customer.customerId"].fillna("").astype(str).str.strip()
+                        )
+                        customer_ids = list(segment_invoice_counts.keys())
+                        customer_source_frame = all_customer_frame[
+                            all_customer_frame["customer.customerId"].isin(customer_ids)
+                        ].copy()
+                    else:
+                        customer_source_frame = pd.DataFrame(columns=snapshot_frame.columns)
+
+        customer_frame = build_customer_portfolio_frame(
+            customer_source_frame,
+            segment=segment,
+            segment_invoice_counts=segment_invoice_counts,
+            approval_threshold_override=_resolve_threshold_override(segment),
+        )
+        total_available = int(len(customer_frame))
+        page_frame = customer_frame.iloc[offset : offset + customer_page_size].copy().reset_index(drop=True)
+        returned = int(len(page_frame))
+        next_offset = offset + returned
+        next_cursor = None
+        if next_offset < total_available:
+            next_cursor = _encode_cursor(
+                {
+                    "snapshot_id": snapshot_id,
+                    "segment": str(segment or "").strip().lower(),
+                    "page_size": customer_page_size,
+                    "offset": next_offset,
+                }
+            )
+
+        descriptor = describe_active_production_model()
+        response = {
+            "segment": str(segment or "").strip().lower(),
+            "model_type": descriptor["model_type"],
+            "model_family": descriptor["model_family"],
+            "model_version": descriptor["version"],
+            "count": returned,
+            "limit": customer_page_size,
+            "customer_limit_applied": customer_page_size,
+            "customers_returned": returned,
+            "total_customers_available": total_available,
+            "summary": _build_scored_summary(page_frame),
+            "snapshot_summary": _build_scored_summary(customer_frame),
+            "total_available": total_available,
+            "pagination": {
+                "snapshot_id": snapshot_id,
+                "snapshot_generated_at": snapshot_meta.get("snapshot_generated_at"),
+                "returned": returned,
+                "has_more": next_cursor is not None,
+                "next_cursor": next_cursor,
+            },
+            "records": _normalize_response_records(page_frame),
+        }
+        logger.debug("Customer list request completed segment=%s returned=%s", segment, returned)
+        return response
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"Customer list validation failed: {exc}")
+    except Exception:
+        logger.exception("Customer list scoring failed for segment=%s", segment)
+        raise HTTPException(status_code=500, detail="Customer list scoring failed. Check server logs.")
+
+
+@router.get("/customer-history/{segment}")
+def customer_history(
+    segment: str,
+    customer_id: str,
+    limit: int = 100,
+    cursor: str | None = None,
+    include_features: bool = False,
+    include_canonical: bool = False,
+    refresh: bool = False,
+    _auth: None = Depends(require_api_key),
+):
+    logger.debug(
+        "Customer history request started segment=%s customer_id=%s limit=%s cursor=%s refresh=%s",
+        segment,
+        customer_id,
+        limit,
+        bool(cursor),
+        refresh,
+    )
+    try:
+        customer_key = str(customer_id).strip()
+        if not customer_key:
+            raise HTTPException(status_code=400, detail="customer_id must be provided")
+        if limit < 1:
+            raise HTTPException(status_code=400, detail="limit must be >= 1")
+        if cursor and refresh:
+            raise HTTPException(status_code=400, detail="refresh cannot be combined with cursor")
+
+        page_size = min(int(limit), 200)
+        offset = 0
+        if cursor:
+            cursor_payload = _decode_cursor(cursor)
+            if str(cursor_payload.get("segment") or "").strip().lower() != str(segment or "").strip().lower():
+                raise HTTPException(status_code=422, detail="Cursor segment does not match request segment.")
+            if str(cursor_payload.get("customer_id") or "").strip() != customer_key:
+                raise HTTPException(status_code=422, detail="Cursor customer_id does not match request customer_id.")
+            if int(cursor_payload.get("page_size") or 0) != page_size:
+                raise HTTPException(status_code=422, detail="Cursor page size does not match request limit.")
+            offset = max(int(cursor_payload.get("offset") or 0), 0)
+
+        customer_result = _score_customer_history(
+            segment=segment,
+            customer_id=customer_key,
+            force_refresh=refresh and not cursor,
+        )
+        records = customer_result["records"]
+        if not records:
+            raise HTTPException(status_code=404, detail="No invoices found for the requested customer.")
+
+        total_available = int(len(records))
+        page_records = records[offset : offset + page_size]
+        returned = int(len(page_records))
+        next_offset = offset + returned
+        next_cursor = None
+        if next_offset < total_available:
+            next_cursor = _encode_cursor(
+                {
+                    "segment": str(segment or "").strip().lower(),
+                    "customer_id": customer_key,
+                    "page_size": page_size,
+                    "offset": next_offset,
+                }
+            )
+
+        descriptor = describe_active_production_model()
+        customer_payload = _build_customer_summary_payload(
+            records,
+            segment=segment,
+            customer_id=customer_key,
+            history_preview_limit=page_size,
+            model_type=descriptor["model_type"],
+            feature_quality=customer_result["feature_quality"],
+            include_history_preview=False,
+            segment_invoice_rows=customer_result["segment_invoice_rows"],
+            approval_threshold_override=_resolve_threshold_override(segment),
+        )
+
+        artifacts = load_production_artifacts()
+        page_indices = list(range(offset, offset + returned))
+        feature_snapshot = (
+            _feature_snapshot_for_rows(customer_result["scoring_frame"], page_indices, artifacts["features"])
+            if include_features
+            else []
+        )
+        canonical_snapshot = (
+            _canonical_snapshot_for_rows(customer_result["customer_df"], page_indices)
+            if include_canonical
+            else []
+        )
+
+        response = build_customer_history_payload(
+            segment=segment,
+            customer_id=customer_key,
+            customer_summary=customer_payload["customer_summary"],
+            records=page_records,
+            total_available=total_available,
+            returned=returned,
+            next_cursor=next_cursor,
+            snapshot_meta={
+                "source_mode": "live_customer_history",
+                "segment": str(segment or "").strip().lower(),
+                "model_type": descriptor["model_type"],
+                "model_family": descriptor["model_family"],
+                "model_version": descriptor["version"],
+                "refresh_applied": bool(refresh and not cursor),
+                "feature_quality": customer_result["feature_quality"],
+            },
+            feature_snapshot=feature_snapshot,
+            canonical_snapshot=canonical_snapshot,
+        )
+        logger.debug("Customer history request completed segment=%s customer_id=%s returned=%s", segment, customer_key, returned)
+        return response
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"Customer history validation failed: {exc}")
+    except Exception:
+        logger.exception("Customer history failed for segment=%s customer_id=%s", segment, customer_id)
+        raise HTTPException(status_code=500, detail="Customer history failed. Check server logs.")
 
 
 @router.post("/cache/refresh")
@@ -342,16 +711,14 @@ def health():
     try:
         snapshot = _api_cache.snapshot(now=time())
         descriptor = describe_active_production_model()
-        source_mode = get_source_mode()
-        risk_main_ping = bool(get_mongo_uri() and get_database_name()) and _check_mongo_live()
         live_ping = bool(get_live_mongo_uri() and get_live_db_name()) and _check_live_mongo_live()
-        active_ping = live_ping if source_mode == "live_collections" else risk_main_ping
+        active_ping = live_ping
         live_diag = get_live_diagnostics()
         payload = {
             "status": "ok" if active_ping else "degraded",
             "mongo": "ok" if active_ping else "unreachable",
-            "source_mode": source_mode,
-            "risk_main_ping": risk_main_ping,
+            "source_mode": "live_collections",
+            "risk_main_ping": False,
             "live_ping": live_ping,
             "live_collections_found": live_diag.get("live_collections_found", []),
             "live_coverage": live_diag.get("coverage", {}),

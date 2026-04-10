@@ -187,6 +187,64 @@ def _history_frame() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _history_frame_with_cross_segment_customer() -> pd.DataFrame:
+    history = _history_frame().copy()
+    extra_row = {
+        "_id": "inv-004",
+        "invoiceNo": "INV-004",
+        "invoiceDate": "2026-02-01",
+        "invoiceDueDate": "2026-03-03",
+        "paymentDate": pd.NaT,
+        "paymentDate_raw": "",
+        "paidStatus": "Pending",
+        "paymentTerms": 30,
+        "customer.customerId": "CUST-001",
+        "customer.customerName": "Acme Logistics",
+        "customer.customerAccountType": "Credit",
+        "customer.customerType": "Existing",
+        "customer.category": "Key",
+        "customer.onboardDate": "2024-01-15",
+        "customer.custCurrency": "USD",
+        "salesPersonName": "Riya Singh",
+        "invoiceType": "Invoice",
+        "selectedCustomerCurrency": "USD",
+        "taxableTotalAmountB": 80000,
+        "totalAmountB": 89600,
+        "paidAmount": 0,
+        "tdsAmount": 0,
+        "ytdExposure": 180000,
+        "receivables.notDueAmount": 12000,
+        "receivables.bucket0To15Amount": 10000,
+        "receivables.bucket16To30Amount": 6000,
+        "receivables.bucket31To45Amount": 0,
+        "receivables.bucket46To60Amount": 0,
+        "receivables.bucket60To90Amount": 0,
+        "receivables.bucketAbove90Amount": 0,
+        "shipmentDetails.queryFor": "ocean",
+        "shipmentDetails.accountType": "Import",
+        "shipmentDetails.incoTerms": "CIF",
+        "shipmentDetails.commodity": "Electronics",
+        "shipmentDetails.grossWeight": 1800,
+        "shipmentDetails.chargeableWeight": 1850,
+        "shipmentDetails.volumeWeight": 1750,
+        "shipmentDetails.noOfContainers": 1,
+        "shipmentDetails.originCity": "Shanghai",
+        "shipmentDetails.originState": "Shanghai",
+        "shipmentDetails.originCountry": "China",
+        "shipmentDetails.destinationCity": "Mumbai",
+        "shipmentDetails.destinationState": "Maharashtra",
+        "shipmentDetails.destinationCountry": "India",
+        "executionDate": "2026-01-29",
+        "operational.clearanceStatus": "Pending",
+        "operational.gateInStatus": "Pending",
+        "operational.lastTrackingStatus": "Sailed",
+        "operational.lastTrackingLocation": "Shanghai",
+        "companyCode": "ZIPA",
+    }
+    history = pd.concat([history, pd.DataFrame([extra_row])], ignore_index=True)
+    return history
+
+
 def _dashboard_access_token(token_type: str = "access") -> str:
     return jwt.encode(
         {
@@ -397,27 +455,52 @@ class ProductionRiskMainTests(unittest.TestCase):
                     score_all_page_2_body["records"][0]["invoice_key"],
                 )
 
-                live_customer_response = client.post("/score-customer/air", json={"customerId": "CUST-001", "limit": 2})
+                live_customer_response = client.post("/score-customer/air", json={"customerId": "CUST-001"})
                 self.assertEqual(live_customer_response.status_code, 200)
                 live_customer_body = live_customer_response.json()
                 self.assertEqual(live_customer_body["customer_summary"]["model_version"], "risk_main_xgb_20260319_094014")
+                self.assertEqual(live_customer_body["customer_summary"]["invoice_rows_scored"], 2)
+                self.assertTrue(live_customer_body["feature_quality"]["feature_validation_passed"])
+                self.assertGreater(live_customer_body["customer_summary"]["pd"], 0)
 
-                snapshot_id = score_all_body["pagination"]["snapshot_id"]
-                customer_response = client.post(
-                    "/score-customer/air",
-                    json={"customerId": "CUST-001", "limit": 10, "snapshotId": snapshot_id},
+                customer_list_response = client.get("/score-customers/air?limit=1")
+                self.assertEqual(customer_list_response.status_code, 200)
+                customer_list_body = customer_list_response.json()
+                self.assertEqual(customer_list_body["model_family"], "risk_main")
+                self.assertEqual(customer_list_body["count"], 1)
+                self.assertEqual(customer_list_body["total_available"], 1)
+                self.assertEqual(customer_list_body["customer_limit_applied"], 1)
+                self.assertEqual(customer_list_body["customers_returned"], 1)
+                self.assertEqual(customer_list_body["total_customers_available"], 1)
+                self.assertIn("pd", customer_list_body["records"][0])
+                self.assertIn("feature_validation_passed", customer_list_body["records"][0])
+
+                all_customers_response = client.get("/score-customers/all?limit=1")
+                self.assertEqual(all_customers_response.status_code, 200)
+                all_customers_body = all_customers_response.json()
+                self.assertEqual(all_customers_body["count"], 1)
+                self.assertEqual(all_customers_body["customer_limit_applied"], 1)
+                self.assertEqual(all_customers_body["customers_returned"], 1)
+                self.assertEqual(all_customers_body["total_customers_available"], 2)
+                self.assertTrue(all_customers_body["pagination"]["has_more"])
+
+                customer_history_response = client.get(
+                    "/customer-history/air?customer_id=CUST-001&limit=1&include_features=true&include_canonical=true"
                 )
-                self.assertEqual(customer_response.status_code, 200)
-                customer_body = customer_response.json()
-                self.assertEqual(customer_body["invoice_rows_scored"], 2)
-                self.assertEqual(customer_body["customer_summary"]["model_version"], "risk_main_xgb_20260319_094014")
+                self.assertEqual(customer_history_response.status_code, 200)
+                customer_history_body = customer_history_response.json()
+                self.assertEqual(customer_history_body["count"], 1)
+                self.assertEqual(customer_history_body["total_available"], 2)
+                self.assertEqual(customer_history_body["customer_summary"]["model_version"], "risk_main_xgb_20260319_094014")
+                self.assertEqual(len(customer_history_body["feature_snapshot"]), 1)
+                self.assertEqual(len(customer_history_body["canonical_snapshot"]), 1)
 
                 health_response = client.get("/health")
                 self.assertEqual(health_response.status_code, 200)
                 health_result = health_response.json()
                 self.assertEqual(health_result["production_model"]["model_family"], "risk_main")
                 self.assertEqual(health_result["production_model"]["model_version"], "risk_main_xgb_20260319_094014")
-                self.assertEqual(health_result["scored_snapshot"]["snapshot_id"], snapshot_id)
+                self.assertEqual(health_result["scored_snapshot"]["snapshot_id"], score_all_body["pagination"]["snapshot_id"])
                 self.assertEqual(health_result["mongo"], "ok")
 
                 performance_response = client.get("/model-performance/air")
@@ -430,7 +513,7 @@ class ProductionRiskMainTests(unittest.TestCase):
                 self.assertIn("comparison_metrics", performance_body)
                 self.assertIn("confusion_matrix", performance_body)
 
-    def test_customer_snapshot_id_validation(self):
+    def test_customer_snapshot_id_is_ignored_for_backward_compatibility(self):
         history = _history_frame()
         with patch.dict(
             os.environ,
@@ -444,7 +527,40 @@ class ProductionRiskMainTests(unittest.TestCase):
                     "/score-customer/air",
                     json={"customerId": "CUST-001", "limit": 10, "snapshotId": "snapshot_missing"},
                 )
-                self.assertEqual(response.status_code, 422)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["customer_summary"]["invoice_rows_scored"], 2)
+
+    def test_customer_endpoints_use_full_history_while_segment_list_stays_segment_scoped(self):
+        history = _history_frame_with_cross_segment_customer()
+        with patch.dict(
+            os.environ,
+            {"API_KEY": "", "DASHBOARD_JWT_SECRET": "", "SECRET_KEY": ""},
+            clear=False,
+        ), patch.object(scoring_api._api_cache, "start", return_value=None), patch.object(
+            scoring_api._api_cache, "stop", return_value=None
+        ), patch.object(scoring_api._api_cache, "load_full_dataset", return_value=history):
+            with TestClient(scoring_api.app) as client:
+                customer_response = client.post("/score-customer/air", json={"customerId": "CUST-001"})
+                self.assertEqual(customer_response.status_code, 200)
+                customer_summary = customer_response.json()["customer_summary"]
+                self.assertEqual(customer_summary["invoice_rows_scored"], 3)
+                self.assertEqual(customer_summary["segment_invoice_rows"], 2)
+                self.assertEqual(customer_summary["customer_total_invoices"], 3)
+
+                customer_list_response = client.get("/score-customers/air?limit=10&refresh=true")
+                self.assertEqual(customer_list_response.status_code, 200)
+                customer_records = customer_list_response.json()["records"]
+                acme_record = next(row for row in customer_records if row["customerId"] == "CUST-001")
+                self.assertEqual(acme_record["invoice_rows_scored"], 3)
+                self.assertEqual(acme_record["segment_invoice_rows"], 2)
+                self.assertEqual(acme_record["customer_total_invoices"], 3)
+
+                customer_history_response = client.get("/customer-history/air?customer_id=CUST-001&limit=10&refresh=true")
+                self.assertEqual(customer_history_response.status_code, 200)
+                history_body = customer_history_response.json()
+                self.assertEqual(history_body["total_available"], 3)
+                self.assertEqual(history_body["customer_summary"]["invoice_rows_scored"], 3)
+                self.assertEqual(history_body["customer_summary"]["segment_invoice_rows"], 2)
 
     def test_dashboard_access_token_allows_protected_routes(self):
         history = _history_frame()
@@ -476,6 +592,19 @@ class ProductionRiskMainTests(unittest.TestCase):
             for item in paths["/score-all/{segment}"]["get"].get("parameters", [])
         }
         self.assertEqual(score_all_params, {"segment", "limit", "cursor", "refresh"})
+        customer_list_params = {
+            item["name"]
+            for item in paths["/score-customers/{segment}"]["get"].get("parameters", [])
+        }
+        self.assertEqual(customer_list_params, {"segment", "limit", "cursor", "refresh"})
+        customer_history_params = {
+            item["name"]
+            for item in paths["/customer-history/{segment}"]["get"].get("parameters", [])
+        }
+        self.assertEqual(
+            customer_history_params,
+            {"segment", "customer_id", "limit", "cursor", "include_features", "include_canonical", "refresh"},
+        )
         score_all_security = paths["/score-all/{segment}"]["get"].get("security", [])
         self.assertEqual(score_all_security, [{"RiskApiKey": []}, {"DashboardBearer": []}])
         model_performance_params = {

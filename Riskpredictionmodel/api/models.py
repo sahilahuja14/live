@@ -37,5 +37,11 @@ class ScoreRequest(BaseModel):
 
 class CustomerScoreRequest(BaseModel):
     customerId: str
-    limit: int = Field(100, ge=1, le=5000)
+    includeHistoryPreview: bool = True
+    historyPreviewLimit: int = Field(25, ge=1, le=100)
+    includeTopInvoiceFeatures: bool = True
+
+    # Deprecated compatibility fields. Existing callers may still send them,
+    # but customer scoring no longer depends on snapshot windows or row limits.
+    limit: int | None = Field(None, ge=1, le=5000)
     snapshotId: str | None = None
