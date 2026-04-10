@@ -43,6 +43,7 @@ def _empty_summary() -> dict:
         "average_score": None,
         "approval_mix": {},
         "risk_band_mix": {},
+        "top_pd_customers": [],
     }
 
 
@@ -249,7 +250,10 @@ class ApiCache:
                 "raw_rows": 0,
             }
 
-        enriched_full = self.enrich_with_customer_history(prepared_full, force_refresh=False)
+        # Snapshot scoring must use customer aggregates derived from the same
+        # full dataset that is being scored, otherwise customer totals can lag
+        # behind the invoice universe in the current snapshot.
+        enriched_full = self.enrich_with_customer_history(prepared_full, force_refresh=True)
         segment_values = (
             enriched_full[_SNAPSHOT_SEGMENT_COL]
             .fillna("unknown")

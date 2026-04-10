@@ -24,13 +24,21 @@ CUSTOMER_AGGREGATE_DEFAULTS = {
 }
 
 
+def _normalize_customer_join_key(series: pd.Series) -> pd.Series:
+    return (
+        series.fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+
 def customer_ids_from_frame(df: pd.DataFrame) -> list[str]:
     if df.empty or CUSTOMER_ID_COL not in df.columns:
         return []
     return (
-        df[CUSTOMER_ID_COL]
+        _normalize_customer_join_key(df[CUSTOMER_ID_COL])
+        .replace({"": pd.NA})
         .dropna()
-        .astype(str)
         .unique()
         .tolist()
     )
@@ -82,7 +90,13 @@ def merge_customer_history_aggregates(df: pd.DataFrame, aggregates: pd.DataFrame
     if out.empty or CUSTOMER_ID_COL not in out.columns:
         return out
     if aggregates is not None and not aggregates.empty:
-        out = out.merge(aggregates, on=CUSTOMER_ID_COL, how="left")
+        join_key = "__customer_join_key"
+        out[join_key] = _normalize_customer_join_key(out[CUSTOMER_ID_COL])
+        aggregates_for_merge = aggregates.copy()
+        aggregates_for_merge[join_key] = _normalize_customer_join_key(aggregates_for_merge[CUSTOMER_ID_COL])
+        aggregates_for_merge = aggregates_for_merge.drop(columns=[CUSTOMER_ID_COL], errors="ignore")
+        out = out.merge(aggregates_for_merge, on=join_key, how="left")
+        out = out.drop(columns=[join_key], errors="ignore")
     for column, default in CUSTOMER_AGGREGATE_DEFAULTS.items():
         if column in out.columns:
             out[column] = pd.to_numeric(out[column], errors="coerce").fillna(default)

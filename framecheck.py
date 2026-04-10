@@ -17,16 +17,17 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from Riskpredictionmodel.config import (
-    get_database_name,
     get_live_db_name,
     get_live_mongo_uri,
-    get_mongo_uri,
-    get_source_mode,
     init_env,
 )
 from Riskpredictionmodel.features.production_registry import validate_feature_frame
-from Riskpredictionmodel.pipeline.live_adapter import compute_live_coverage, get_live_diagnostics
-from Riskpredictionmodel.pipeline.risk_canonical import canonicalize_risk_main_frame, fetch_risk_main_frame
+from Riskpredictionmodel.pipeline.risk_canonical import (
+    canonicalize_risk_main_frame,
+    compute_live_coverage,
+    fetch_risk_main_frame,
+    get_live_diagnostics,
+)
 from Riskpredictionmodel.pipeline.risk_main import build_risk_main_scoring_frame
 from Riskpredictionmodel.scoring.model import load_production_artifacts, score_production_frame
 
@@ -105,10 +106,8 @@ CANONICAL_DOMAIN_GROUPS = {
 
 
 def _print_source_config() -> str:
-    source_mode = get_source_mode()
+    source_mode = "live_collections"
     print("source_mode:", source_mode)
-    print("risk_main_db:", get_database_name())
-    print("risk_main_uri:", get_mongo_uri())
     print("live_db:", get_live_db_name())
     print("live_uri:", get_live_mongo_uri())
     return source_mode
@@ -409,10 +408,6 @@ def main() -> int:
 
     init_env()
     source_mode = _print_source_config()
-    if source_mode != "live_collections" and not args.allow_risk_main:
-        print("Refusing to continue because source_mode is not live_collections.")
-        print("Set PRODUCTION_RISK_SOURCE_MODE=live_collections in the root .env or rerun with --allow-risk-main.")
-        return 1
 
     query = _build_query(args)
     print("query:", query or "{}")
