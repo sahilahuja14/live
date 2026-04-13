@@ -38,6 +38,7 @@ from .response_builder import (
 from .settings import load_api_settings
 from ..data.segment_filters import filter_segment as _segment_filter
 from ..dbconnect import get_live_database
+from ..features.registry import SEGMENT_COL
 from ..logging_config import get_logger
 from ..pipeline.risk_canonical import canonicalize_risk_main_frame, get_live_diagnostics
 from ..pipeline.runner import score_mongo_frame, score_mongo_frame_with_details
@@ -166,9 +167,11 @@ def _load_customer_invoice_frame(
 
     segment_customer_df = _segment_filter(customer_df, segment, allow_all=True, missing="input")
     if segment_customer_df.empty:
+        available_segments = customer_df.get("shipmentDetails.queryFor", pd.Series(dtype=object))
+        if available_segments.dropna().empty:
+            available_segments = customer_df.get(SEGMENT_COL, pd.Series(dtype=object))
         available_segments = (
-            customer_df.get("shipmentDetails.queryFor", pd.Series(dtype=object))
-            .fillna("")
+            available_segments.fillna("")
             .astype(str)
             .str.strip()
             .str.lower()
@@ -474,11 +477,12 @@ def score_customers(
                     else:
                         customer_source_frame = pd.DataFrame(columns=snapshot_frame.columns)
 
+        source_for_builder = customer_source_frame.copy()
         customer_frame = _api_cache.get_customer_portfolio(
             segment=segment,
             snapshot_id=snapshot_id,
             builder=lambda: build_customer_portfolio_frame(
-                customer_source_frame,
+                source_for_builder,
                 segment=segment,
                 segment_invoice_counts=segment_invoice_counts,
                 approval_threshold_override=_resolve_threshold_override(segment),
