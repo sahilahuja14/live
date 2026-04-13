@@ -19,6 +19,7 @@ if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
 from Riskpredictionmodel.features.customer_aggregates import build_customer_history_aggregates
+from Riskpredictionmodel.api.cache import ApiCache
 from Riskpredictionmodel.pipeline.risk_main import build_risk_main_manual_request_frame, build_risk_main_scoring_frame
 from Riskpredictionmodel.scoring.model import describe_active_production_model, load_production_artifacts
 from Riskpredictionmodel.api import scoring_api
@@ -269,6 +270,15 @@ class DummyPayload:
 
 
 class ProductionRiskMainTests(unittest.TestCase):
+    def _make_cache(self) -> ApiCache:
+        return ApiCache(
+            dataset_ttl_seconds=60,
+            history_ttl_seconds=60,
+            auto_refresh_enabled=False,
+            auto_refresh_interval_seconds=60,
+            scored_snapshot_retention_seconds=60,
+        )
+
     def test_descriptor_uses_local_champion(self):
         descriptor = describe_active_production_model(force_reload=True)
         self.assertEqual(descriptor["model_family"], "risk_main")
@@ -755,6 +765,34 @@ class ProductionRiskMainTests(unittest.TestCase):
     def test_build_customer_history_aggregates_empty_input(self):
         result = build_customer_history_aggregates(pd.DataFrame())
         self.assertTrue(result.empty)
+
+    def test_customer_portfolio_cache_skips_when_snapshot_id_is_empty(self):
+        cache = self._make_cache()
+        calls = {"n": 0}
+
+        def builder():
+            calls["n"] += 1
+            return pd.DataFrame([{"customerId": "C1", "pd": 0.1}])
+
+        cache.get_customer_portfolio(segment="air", snapshot_id="", builder=builder)
+        cache.get_customer_portfolio(segment="air", snapshot_id="", builder=builder)
+        self.assertEqual(calls["n"], 2)
+
+    def test_customer_portfolio_cache_hits_for_same_snapshot_id(self):
+        cache = self._make_cache()
+        calls = {"n": 0}
+
+        def builder():
+            calls["n"] += 1
+            return pd.DataFrame([{"customerId": "C1", "pd": 0.1}])
+
+        first = cache.get_customer_portfolio(segment="air", snapshot_id="snap-001", builder=builder)
+        second = cache.get_customer_portfolio(segment="air", snapshot_id="snap-001", builder=builder)
+        third = cache.get_customer_portfolio(segment="air", snapshot_id="snap-002", builder=builder)
+
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(first.to_dict(orient="records"), second.to_dict(orient="records"))
+        self.assertEqual(third.to_dict(orient="records"), [{"customerId": "C1", "pd": 0.1}])
 
     def test_model_performance_degrades_when_snapshot_unavailable(self):
         with patch.dict(
