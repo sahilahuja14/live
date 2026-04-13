@@ -26,6 +26,7 @@ from .models import CustomerScoreRequest, ScoreRequest
 from .request_builder import build_manual_request_frame as _build_manual_request_frame
 from .response_builder import (
     _build_customer_summary_payload,
+    _build_customer_page_summary,
     _build_scored_summary,
     _filter_customer_rows,
     _normalize_response_records,
@@ -125,7 +126,7 @@ def _decode_cursor(cursor: str) -> dict:
     return payload
 
 
-def _feature_quality_payload(details, input_rows: int) -> dict:
+def _feature_quality_payload(details, input_rows: int, *, scoring_context: str | None = None) -> dict:
     validation = details.validation
     return {
         "feature_validation_passed": validation.is_valid,
@@ -134,6 +135,7 @@ def _feature_quality_payload(details, input_rows: int) -> dict:
         "missing_feature_count": int(len(validation.missing_columns) + len(validation.missing_features)),
         "invalid_object_feature_count": int(len(validation.invalid_object_features)),
         "invalid_datetime_feature_count": int(len(validation.invalid_datetime_features)),
+        "scoring_context": scoring_context,
     }
 
 
@@ -158,9 +160,27 @@ def _load_customer_invoice_frame(
     full_df = _prepare_history_frame(force_refresh=force_refresh)
     customer_df = _filter_customer_rows(full_df, customer_id)
     if customer_df.empty:
-        return full_df, pd.DataFrame(), 0
+        raise HTTPException(
+            status_code=404,
+            detail=f"Customer '{customer_id}' was not found in any segment.",
+        )
 
     segment_customer_df = _segment_filter(customer_df, segment, allow_all=True, missing="input")
+    if segment_customer_df.empty:
+        available_segments = (
+            customer_df.get("shipmentDetails.queryFor", pd.Series(dtype=object))
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()
+        )
+        available_segments = sorted(value for value in available_segments.unique().tolist() if value)
+        segment_text = ", ".join(available_segments) if available_segments else "none"
+        raise HTTPException(
+            status_code=404,
+            detail=f"Customer '{customer_id}' has no invoices in segment '{segment}'. Available segments: {segment_text}.",
+        )
+
     customer_df = _enrich_with_customer_history(customer_df, force_refresh=force_refresh)
     return full_df, customer_df.reset_index(drop=True), int(len(segment_customer_df))
 
@@ -191,57 +211,51 @@ def _score_customer_history(
     customer_id: str,
     force_refresh: bool,
 ) -> dict:
+    scoring_context = f"live_customer:{segment.lower()}:{customer_id}"
     history_df, customer_df, segment_invoice_rows = _load_customer_invoice_frame(
         segment,
         customer_id,
         force_refresh=force_refresh,
     )
-    if customer_df.empty:
-        return {
-            "history_df": history_df,
-            "customer_df": customer_df,
-            "segment_invoice_rows": 0,
-            "records": [],
-            "scoring_frame": pd.DataFrame(),
-            "feature_quality": {
-                "feature_validation_passed": True,
-                "scored_invoice_rows": 0,
-                "dropped_invoice_rows": 0,
-                "missing_feature_count": 0,
-                "invalid_object_feature_count": 0,
-                "invalid_datetime_feature_count": 0,
-            },
-        }
-
     details = score_mongo_frame_with_details(
         customer_df,
         history_df=history_df,
         top_n=5,
         approval_threshold_override=_resolve_threshold_override(segment),
-        scoring_context=f"live_customer:{segment.lower()}:{customer_id}",
+        scoring_context=scoring_context,
     )
     merged = _response_from_raw(customer_df, details.scored_frame)
     shaped = _shape_response_frame(merged, response_mode="lean")
     records = _normalize_response_records(shaped)
+    if not records:
+        raise HTTPException(
+            status_code=500,
+            detail="Customer scoring failed because no invoice rows passed feature validation.",
+        )
     return {
         "history_df": history_df,
         "customer_df": customer_df,
         "segment_invoice_rows": int(segment_invoice_rows),
         "records": records,
         "scoring_frame": details.scoring_frame.reset_index(drop=True),
-        "feature_quality": _feature_quality_payload(details, input_rows=len(customer_df)),
+        "feature_quality": _feature_quality_payload(
+            details,
+            input_rows=len(customer_df),
+            scoring_context=scoring_context,
+        ),
     }
 
 
-def _customer_records_page(frame: pd.DataFrame, *, page_size: int, offset: int) -> tuple[pd.DataFrame, int, str | None]:
-    total_available = int(len(frame))
-    page_df = frame.iloc[offset : offset + int(page_size)].copy().reset_index(drop=True)
-    returned = int(len(page_df))
+def _slice_page(items, *, page_size: int, offset: int):
+    total_available = int(len(items))
+    end_offset = offset + int(page_size)
+    if isinstance(items, pd.DataFrame):
+        page_items = items.iloc[offset:end_offset].copy().reset_index(drop=True)
+    else:
+        page_items = list(items[offset:end_offset])
+    returned = int(len(page_items))
     next_offset = offset + returned
-    next_cursor = None
-    if next_offset < total_available:
-        next_cursor = str(next_offset)
-    return page_df, total_available, next_cursor
+    return page_items, total_available, returned, next_offset
 
 
 def build_scored_frame(segment: str, limit: int | None = None, customer_id: str | None = None, force_refresh: bool = False) -> pd.DataFrame:
@@ -357,13 +371,10 @@ def score_customer(segment: str, payload: CustomerScoreRequest, _auth: None = De
         customer_result = _score_customer_history(
             segment=segment,
             customer_id=customer_id,
-            force_refresh=True,
+            force_refresh=bool(payload.refresh),
         )
-        records = customer_result["records"]
-        if not records:
-            raise HTTPException(status_code=404, detail="No invoices found for the requested customer.")
         response = _build_customer_summary_payload(
-            records,
+            customer_result["records"],
             segment=segment,
             customer_id=customer_id,
             history_preview_limit=preview_limit,
@@ -374,7 +385,15 @@ def score_customer(segment: str, payload: CustomerScoreRequest, _auth: None = De
             segment_invoice_rows=customer_result["segment_invoice_rows"],
             approval_threshold_override=_resolve_threshold_override(segment),
         )
-        logger.debug("Customer scoring request completed segment=%s rows=%s", segment, response.get("invoice_rows_scored"))
+        pd_trace = response.get("customer_summary", {}).get("pd_computation_trace", {})
+        logger.info(
+            "Customer scoring completed segment=%s customer_id=%s invoices=%s pd=%.6f path=%s",
+            segment,
+            customer_id,
+            response.get("customer_summary", {}).get("invoice_rows_scored"),
+            float(response.get("customer_summary", {}).get("pd", 0.0) or 0.0),
+            pd_trace.get("path"),
+        )
         return response
     except HTTPException:
         raise
@@ -454,16 +473,21 @@ def score_customers(
                     else:
                         customer_source_frame = pd.DataFrame(columns=snapshot_frame.columns)
 
-        customer_frame = build_customer_portfolio_frame(
-            customer_source_frame,
+        customer_frame = _api_cache.get_customer_portfolio(
             segment=segment,
-            segment_invoice_counts=segment_invoice_counts,
-            approval_threshold_override=_resolve_threshold_override(segment),
+            snapshot_id=snapshot_id,
+            builder=lambda: build_customer_portfolio_frame(
+                customer_source_frame,
+                segment=segment,
+                segment_invoice_counts=segment_invoice_counts,
+                approval_threshold_override=_resolve_threshold_override(segment),
+            ),
         )
-        total_available = int(len(customer_frame))
-        page_frame = customer_frame.iloc[offset : offset + customer_page_size].copy().reset_index(drop=True)
-        returned = int(len(page_frame))
-        next_offset = offset + returned
+        page_frame, total_available, returned, next_offset = _slice_page(
+            customer_frame,
+            page_size=customer_page_size,
+            offset=offset,
+        )
         next_cursor = None
         if next_offset < total_available:
             next_cursor = _encode_cursor(
@@ -486,8 +510,8 @@ def score_customers(
             "customer_limit_applied": customer_page_size,
             "customers_returned": returned,
             "total_customers_available": total_available,
-            "summary": _build_scored_summary(page_frame),
-            "snapshot_summary": _build_scored_summary(customer_frame),
+            "summary": _build_customer_page_summary(page_frame),
+            "snapshot_summary": _build_customer_page_summary(customer_frame),
             "total_available": total_available,
             "pagination": {
                 "snapshot_id": snapshot_id,
@@ -498,7 +522,13 @@ def score_customers(
             },
             "records": _normalize_response_records(page_frame),
         }
-        logger.debug("Customer list request completed segment=%s returned=%s", segment, returned)
+        logger.info(
+            "Customer list completed segment=%s customers=%s total_customers=%s snapshot_id=%s",
+            segment,
+            returned,
+            total_available,
+            snapshot_id,
+        )
         return response
     except HTTPException:
         raise
@@ -554,14 +584,11 @@ def customer_history(
             customer_id=customer_key,
             force_refresh=refresh and not cursor,
         )
-        records = customer_result["records"]
-        if not records:
-            raise HTTPException(status_code=404, detail="No invoices found for the requested customer.")
-
-        total_available = int(len(records))
-        page_records = records[offset : offset + page_size]
-        returned = int(len(page_records))
-        next_offset = offset + returned
+        page_records, total_available, returned, next_offset = _slice_page(
+            customer_result["records"],
+            page_size=page_size,
+            offset=offset,
+        )
         next_cursor = None
         if next_offset < total_available:
             next_cursor = _encode_cursor(
@@ -575,7 +602,7 @@ def customer_history(
 
         descriptor = describe_active_production_model()
         customer_payload = _build_customer_summary_payload(
-            records,
+            customer_result["records"],
             segment=segment,
             customer_id=customer_key,
             history_preview_limit=page_size,
@@ -619,7 +646,13 @@ def customer_history(
             feature_snapshot=feature_snapshot,
             canonical_snapshot=canonical_snapshot,
         )
-        logger.debug("Customer history request completed segment=%s customer_id=%s returned=%s", segment, customer_key, returned)
+        logger.info(
+            "Customer history completed segment=%s customer_id=%s returned=%s total=%s",
+            segment,
+            customer_key,
+            returned,
+            total_available,
+        )
         return response
     except HTTPException:
         raise

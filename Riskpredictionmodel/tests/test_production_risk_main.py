@@ -461,7 +461,13 @@ class ProductionRiskMainTests(unittest.TestCase):
                 self.assertEqual(live_customer_body["customer_summary"]["model_version"], "risk_main_xgb_20260319_094014")
                 self.assertEqual(live_customer_body["customer_summary"]["invoice_rows_scored"], 2)
                 self.assertTrue(live_customer_body["feature_quality"]["feature_validation_passed"])
+                self.assertEqual(live_customer_body["feature_quality"]["scoring_context"], "live_customer:air:CUST-001")
                 self.assertGreater(live_customer_body["customer_summary"]["pd"], 0)
+                self.assertIn("pd_computation_trace", live_customer_body["customer_summary"])
+                self.assertIn(
+                    live_customer_body["customer_summary"]["pd_computation_trace"]["weight_method"],
+                    {"amount_weighted", "equal_weight_fallback"},
+                )
 
                 customer_list_response = client.get("/score-customers/air?limit=1")
                 self.assertEqual(customer_list_response.status_code, 200)
@@ -472,7 +478,12 @@ class ProductionRiskMainTests(unittest.TestCase):
                 self.assertEqual(customer_list_body["customer_limit_applied"], 1)
                 self.assertEqual(customer_list_body["customers_returned"], 1)
                 self.assertEqual(customer_list_body["total_customers_available"], 1)
+                self.assertEqual(customer_list_body["summary"]["customers"], 1)
+                self.assertEqual(customer_list_body["snapshot_summary"]["customers"], 1)
+                self.assertEqual(customer_list_body["summary"]["rows"], 1)
+                self.assertEqual(customer_list_body["snapshot_summary"]["rows"], 1)
                 self.assertIn("pd", customer_list_body["records"][0])
+                self.assertIn("pd_computation_trace", customer_list_body["records"][0])
                 self.assertIn("feature_validation_passed", customer_list_body["records"][0])
 
                 all_customers_response = client.get("/score-customers/all?limit=1")
@@ -492,6 +503,7 @@ class ProductionRiskMainTests(unittest.TestCase):
                 self.assertEqual(customer_history_body["count"], 1)
                 self.assertEqual(customer_history_body["total_available"], 2)
                 self.assertEqual(customer_history_body["customer_summary"]["model_version"], "risk_main_xgb_20260319_094014")
+                self.assertEqual(customer_history_body["feature_quality"]["scoring_context"], "live_customer:air:CUST-001")
                 self.assertEqual(len(customer_history_body["feature_snapshot"]), 1)
                 self.assertEqual(len(customer_history_body["canonical_snapshot"]), 1)
 
@@ -546,14 +558,19 @@ class ProductionRiskMainTests(unittest.TestCase):
                 self.assertEqual(customer_summary["invoice_rows_scored"], 3)
                 self.assertEqual(customer_summary["segment_invoice_rows"], 2)
                 self.assertEqual(customer_summary["customer_total_invoices"], 3)
+                self.assertEqual(customer_summary["pd_computation_trace"]["population"], "open_invoices")
 
                 customer_list_response = client.get("/score-customers/air?limit=10&refresh=true")
                 self.assertEqual(customer_list_response.status_code, 200)
-                customer_records = customer_list_response.json()["records"]
+                customer_list_body = customer_list_response.json()
+                self.assertIn("customers", customer_list_body["summary"])
+                self.assertIn("avg_customer_pd", customer_list_body["summary"])
+                customer_records = customer_list_body["records"]
                 acme_record = next(row for row in customer_records if row["customerId"] == "CUST-001")
                 self.assertEqual(acme_record["invoice_rows_scored"], 3)
                 self.assertEqual(acme_record["segment_invoice_rows"], 2)
                 self.assertEqual(acme_record["customer_total_invoices"], 3)
+                self.assertIn("invoice_count", acme_record["top_features"][0])
 
                 customer_history_response = client.get("/customer-history/air?customer_id=CUST-001&limit=10&refresh=true")
                 self.assertEqual(customer_history_response.status_code, 200)
@@ -561,6 +578,7 @@ class ProductionRiskMainTests(unittest.TestCase):
                 self.assertEqual(history_body["total_available"], 3)
                 self.assertEqual(history_body["customer_summary"]["invoice_rows_scored"], 3)
                 self.assertEqual(history_body["customer_summary"]["segment_invoice_rows"], 2)
+                self.assertEqual(history_body["feature_quality"]["scoring_context"], "live_customer:air:CUST-001")
 
     def test_dashboard_access_token_allows_protected_routes(self):
         history = _history_frame()
@@ -605,6 +623,8 @@ class ProductionRiskMainTests(unittest.TestCase):
             customer_history_params,
             {"segment", "customer_id", "limit", "cursor", "include_features", "include_canonical", "refresh"},
         )
+        customer_score_schema = scoring_api.app.openapi()["components"]["schemas"]["CustomerScoreRequest"]["properties"]
+        self.assertIn("refresh", customer_score_schema)
         score_all_security = paths["/score-all/{segment}"]["get"].get("security", [])
         self.assertEqual(score_all_security, [{"RiskApiKey": []}, {"DashboardBearer": []}])
         model_performance_params = {
