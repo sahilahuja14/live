@@ -27,7 +27,6 @@ from .request_builder import build_manual_request_frame as _build_manual_request
 from .response_builder import (
     _build_customer_summary_payload,
     _build_customer_page_summary,
-    _build_scored_summary,
     _filter_customer_rows,
     _normalize_response_records,
     _shape_response_frame,
@@ -387,12 +386,14 @@ def score_customer(segment: str, payload: CustomerScoreRequest, _auth: None = De
         )
         pd_trace = response.get("customer_summary", {}).get("pd_computation_trace", {})
         logger.info(
-            "Customer scoring completed segment=%s customer_id=%s invoices=%s pd=%.6f path=%s",
+            "customer_score_complete segment=%s customer_id=%s invoices=%s pd=%.6f risk_band=%s approval=%s pd_path=%s",
             segment,
             customer_id,
             response.get("customer_summary", {}).get("invoice_rows_scored"),
             float(response.get("customer_summary", {}).get("pd", 0.0) or 0.0),
-            pd_trace.get("path"),
+            response.get("customer_summary", {}).get("risk_band", "unknown"),
+            response.get("customer_summary", {}).get("approval", "unknown"),
+            pd_trace.get("path", "unknown"),
         )
         return response
     except HTTPException:
@@ -646,12 +647,19 @@ def customer_history(
             feature_snapshot=feature_snapshot,
             canonical_snapshot=canonical_snapshot,
         )
+        feature_quality = customer_result.get("feature_quality", {})
         logger.info(
-            "Customer history completed segment=%s customer_id=%s returned=%s total=%s",
+            "customer_history_complete segment=%s customer_id=%s returned=%s total=%s pd=%.6f risk_band=%s approval=%s validation_passed=%s features=%s canonical=%s",
             segment,
             customer_key,
             returned,
             total_available,
+            float(customer_payload.get("customer_summary", {}).get("pd", 0.0) or 0.0),
+            customer_payload.get("customer_summary", {}).get("risk_band", "unknown"),
+            customer_payload.get("customer_summary", {}).get("approval", "unknown"),
+            feature_quality.get("feature_validation_passed", "unknown"),
+            include_features,
+            include_canonical,
         )
         return response
     except HTTPException:
