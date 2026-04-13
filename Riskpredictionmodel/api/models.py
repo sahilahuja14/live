@@ -40,6 +40,7 @@ class CustomerScoreRequest(BaseModel):
     includeHistoryPreview: bool = True
     historyPreviewLimit: int = Field(25, ge=1, le=100)
     includeTopInvoiceFeatures: bool = True
+    refresh: bool = False
 
     # Deprecated compatibility fields. Existing callers may still send them,
     # but customer scoring no longer depends on snapshot windows or row limits.

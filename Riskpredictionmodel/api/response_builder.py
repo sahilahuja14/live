@@ -66,18 +66,73 @@ def _display_amount_series(df: pd.DataFrame) -> pd.Series:
     return gross_amount.fillna(taxable_amount)
 
 
-def _weighted_customer_pd(pd_series: pd.Series, amount_series: pd.Series, open_mask: pd.Series) -> float:
-    base_mask = open_mask if bool(open_mask.any()) else pd.Series(True, index=pd_series.index)
+def _top_customer_page_records(customer_frame: pd.DataFrame, top_n: int = 5) -> list[dict]:
+    if customer_frame.empty:
+        return []
+
+    ranked = customer_frame.copy()
+    ranked["__sort_pd"] = pd.to_numeric(ranked.get("pd"), errors="coerce").fillna(-1.0)
+    ranked["__sort_delay"] = pd.to_numeric(ranked.get("average_delay_days"), errors="coerce").fillna(-1.0)
+    ranked["__sort_score"] = pd.to_numeric(ranked.get("score"), errors="coerce").fillna(999999.0)
+    ranked = ranked.sort_values(
+        ["__sort_pd", "__sort_delay", "__sort_score"],
+        ascending=[False, False, True],
+        na_position="last",
+    ).drop(
+        columns=["__sort_pd", "__sort_delay", "__sort_score"],
+        errors="ignore",
+    )
+    return _normalize_response_records(ranked.head(max(int(top_n), 1)))
+
+
+def _weighted_customer_pd(
+    pd_series: pd.Series,
+    amount_series: pd.Series,
+    open_mask: pd.Series,
+) -> tuple[float, dict]:
+    total_invoices = int(len(pd_series))
+    normalized_open_mask = open_mask.fillna(False).astype(bool)
+    total_open_invoices = int(normalized_open_mask.sum())
+    use_open_invoices = bool(normalized_open_mask.any())
+    population = "open_invoices" if use_open_invoices else "all_invoices_no_open"
+    base_mask = open_mask if use_open_invoices else pd.Series(True, index=pd_series.index)
     selected_pd = pd_series[base_mask].fillna(0.0)
-    selected_amount = amount_series[base_mask].fillna(0.0)
+    selected_amount = amount_series[base_mask].fillna(0.0).clip(lower=0.0)
+
     if selected_pd.empty:
-        return 0.0
-    positive_amount = selected_amount.clip(lower=0.0)
-    if float(positive_amount.sum()) > 0:
-        weighted = float(np.average(selected_pd.to_numpy(dtype=float), weights=positive_amount.to_numpy(dtype=float)))
+        return 0.0, {
+            "path": "empty_input",
+            "population": population,
+            "weight_method": "equal_weight",
+            "invoices_used": 0,
+            "total_open_invoices": total_open_invoices,
+            "total_invoices": total_invoices,
+            "total_weight": 0.0,
+        }
+
+    total_weight = float(selected_amount.sum())
+    if total_weight > 0:
+        weighted = float(
+            np.average(
+                selected_pd.to_numpy(dtype=float),
+                weights=selected_amount.to_numpy(dtype=float),
+            )
+        )
+        weight_method = "amount_weighted"
     else:
         weighted = float(selected_pd.mean())
-    return float(np.clip(weighted, 1e-6, 1 - 1e-6))
+        weight_method = "equal_weight_fallback"
+
+    trace = {
+        "path": f"{population}:{weight_method}",
+        "population": population,
+        "weight_method": weight_method,
+        "invoices_used": int(len(selected_pd)),
+        "total_open_invoices": total_open_invoices,
+        "total_invoices": total_invoices,
+        "total_weight": round(total_weight, 2),
+    }
+    return float(np.clip(weighted, 1e-6, 1 - 1e-6)), trace
 
 
 def _feature_quality_payload(feature_quality: dict | None, row_count: int) -> dict:
@@ -100,6 +155,7 @@ def _feature_quality_payload(feature_quality: dict | None, row_count: int) -> di
         "missing_feature_count": missing_feature_count,
         "invalid_object_feature_count": invalid_object_count,
         "invalid_datetime_feature_count": invalid_datetime_count,
+        "scoring_context": quality.get("scoring_context"),
     }
 
 
@@ -300,6 +356,61 @@ def _build_scored_summary(df: pd.DataFrame) -> dict:
     }
 
 
+def _build_customer_page_summary(customer_frame: pd.DataFrame) -> dict:
+    if customer_frame.empty:
+        empty_summary = {
+            "customers": 0,
+            "avg_customer_pd": None,
+            "avg_customer_score": None,
+            "avg_delay_days": None,
+            "avg_actual_delay_rate": None,
+            "approval_mix": {},
+            "risk_band_mix": {},
+            "top_customers_by_pd": [],
+        }
+        empty_summary.update(
+            {
+                "rows": empty_summary["customers"],
+                "average_pd": empty_summary["avg_customer_pd"],
+                "average_score": empty_summary["avg_customer_score"],
+                "actual_delay_rate": empty_summary["avg_actual_delay_rate"],
+                "top_pd_customers": empty_summary["top_customers_by_pd"],
+            }
+        )
+        return empty_summary
+
+    pd_series = pd.to_numeric(customer_frame.get("pd", pd.Series(dtype=object)), errors="coerce")
+    score_series = pd.to_numeric(customer_frame.get("score", pd.Series(dtype=object)), errors="coerce")
+    delay_series = pd.to_numeric(customer_frame.get("average_delay_days", pd.Series(dtype=object)), errors="coerce")
+    delay_rate_series = pd.to_numeric(customer_frame.get("actual_delay_rate", pd.Series(dtype=object)), errors="coerce")
+    summary = {
+        "customers": int(len(customer_frame)),
+        "avg_customer_pd": None if pd_series.dropna().empty else round(float(pd_series.fillna(0.0).mean()), 6),
+        "avg_customer_score": None if score_series.dropna().empty else round(float(score_series.fillna(0.0).mean()), 2),
+        "avg_delay_days": None if delay_series.dropna().empty else round(float(delay_series.fillna(0.0).mean()), 2),
+        "avg_actual_delay_rate": None if delay_rate_series.dropna().empty else round(float(delay_rate_series.fillna(0.0).mean()), 6),
+        "approval_mix": {
+            str(key): int(value)
+            for key, value in customer_frame.get("approval", pd.Series(dtype=object)).fillna("Unknown").astype(str).value_counts().to_dict().items()
+        },
+        "risk_band_mix": {
+            str(key): int(value)
+            for key, value in customer_frame.get("risk_band", pd.Series(dtype=object)).fillna("Unknown").astype(str).value_counts().to_dict().items()
+        },
+        "top_customers_by_pd": _top_customer_page_records(customer_frame, top_n=5),
+    }
+    summary.update(
+        {
+            "rows": summary["customers"],
+            "average_pd": summary["avg_customer_pd"],
+            "average_score": summary["avg_customer_score"],
+            "actual_delay_rate": summary["avg_actual_delay_rate"],
+            "top_pd_customers": summary["top_customers_by_pd"],
+        }
+    )
+    return summary
+
+
 def _aggregate_customer_top_features(records_df: pd.DataFrame, top_n: int = 5) -> list[dict]:
     stats: dict[str, dict] = {}
     for features in records_df.get("top_features", pd.Series(dtype=object)):
@@ -343,6 +454,7 @@ def _aggregate_customer_top_features(records_df: pd.DataFrame, top_n: int = 5) -
                 "model_feature": item["model_feature"],
                 "contribution": round(float(avg_contribution), 6),
                 "direction": direction,
+                "invoice_count": int(item["count"]),
             }
         )
     return output
@@ -389,7 +501,11 @@ def _build_customer_portfolio_record(
     else:
         approval_threshold = 0.30
 
-    customer_pd = _weighted_customer_pd(pd_series, display_amount_series, open_mask)
+    weight_series = taxable_amount_series
+    if float(weight_series.clip(lower=0.0).sum()) <= 0:
+        weight_series = display_amount_series
+
+    customer_pd, pd_trace = _weighted_customer_pd(pd_series, weight_series, open_mask)
     customer_score = int(_scale_score([customer_pd])[0])
     customer_risk_band = str(_risk_band([customer_pd])[0])
     customer_approval = str(_approval([customer_pd], threshold=approval_threshold)[0])
@@ -423,6 +539,7 @@ def _build_customer_portfolio_record(
         "max_pd": round(float(pd_series.max()), 6),
         "max_invoice_pd": round(float(pd_series.max()), 6),
         "pd": round(float(customer_pd), 6),
+        "pd_computation_trace": pd_trace,
         "score": customer_score,
         "risk_band": customer_risk_band,
         "approval": customer_approval,
@@ -574,6 +691,7 @@ def build_customer_history_payload(
                 "missing_feature_count": customer_summary.get("missing_feature_count"),
                 "invalid_object_feature_count": customer_summary.get("invalid_object_feature_count"),
                 "invalid_datetime_feature_count": customer_summary.get("invalid_datetime_feature_count"),
+                "scoring_context": customer_summary.get("scoring_context"),
             }
         ),
         "total_available": int(total_available),

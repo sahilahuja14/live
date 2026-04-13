@@ -75,6 +75,7 @@ class ApiCache:
         self._previous_scored_snapshot: dict | None = None
         self._scored_loading = False
         self._page_cache: dict[tuple[str, str, int, int], dict] = {}
+        self._customer_portfolio_cache: dict[tuple[str, str], pd.DataFrame] = {}
         self._index_report: dict | None = None
         self._auto_refresh_state = {
             "running": False,
@@ -176,6 +177,7 @@ class ApiCache:
             self._dataset_cache["model_key"] = model_key
             self._dataset_loading = False
             self._history_cache.clear()
+            self._customer_portfolio_cache.clear()
             self._index_report = index_report
             self._condition.notify_all()
             return fresh.copy()
@@ -374,6 +376,7 @@ class ApiCache:
             self._scored_snapshot = snapshot
             self._scored_loading = False
             self._page_cache.clear()
+            self._customer_portfolio_cache.clear()
             self._condition.notify_all()
             return snapshot
 
@@ -511,6 +514,24 @@ class ApiCache:
             "summary": dict(snapshot.get("segment_summaries", {}).get(segment_value, _empty_summary())),
         }
 
+    def get_customer_portfolio(
+        self,
+        *,
+        segment: str,
+        snapshot_id: str,
+        builder: Callable[[], pd.DataFrame],
+    ) -> pd.DataFrame:
+        cache_key = (str(segment or "").strip().lower(), str(snapshot_id or "").strip())
+        with self._lock:
+            cached = self._customer_portfolio_cache.get(cache_key)
+            if cached is not None:
+                return cached.copy()
+
+        portfolio_frame = builder()
+        with self._lock:
+            self._customer_portfolio_cache[cache_key] = portfolio_frame.copy()
+        return portfolio_frame.copy()
+
     def refresh(self) -> None:
         refresh_start = perf_counter()
         logger.info("API cache refresh started model_key=%s", self._model_key())
@@ -518,6 +539,7 @@ class ApiCache:
         snapshot = self.load_scored_snapshot(force_refresh=True, source_df=fresh)
         with self._lock:
             self._history_cache.clear()
+            self._customer_portfolio_cache.clear()
         logger.info(
             "API cache refresh completed raw_rows=%d scored_rows=%d duration_ms=%.1f",
             len(fresh),
@@ -538,6 +560,7 @@ class ApiCache:
             current_snapshot = self._scored_snapshot
             previous_snapshot = self._previous_scored_snapshot
             page_cache_entries = len(self._page_cache)
+            customer_portfolio_cache_entries = len(self._customer_portfolio_cache)
             index_report = None if self._index_report is None else dict(self._index_report)
 
         dataset_age = (current_time - dataset_ts) if dataset_ts else None
@@ -569,6 +592,7 @@ class ApiCache:
                 "previous_snapshot_id": None if previous_snapshot is None else previous_snapshot.get("snapshot_id"),
                 "previous_snapshot_age_seconds": previous_snapshot_age,
                 "page_cache_entries": page_cache_entries,
+                "customer_portfolio_cache_entries": customer_portfolio_cache_entries,
             },
             "mongo_indexes": index_report,
             "auto_refresh": auto_state,
