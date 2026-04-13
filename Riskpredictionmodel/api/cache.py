@@ -521,7 +521,16 @@ class ApiCache:
         snapshot_id: str,
         builder: Callable[[], pd.DataFrame],
     ) -> pd.DataFrame:
-        cache_key = (str(segment or "").strip().lower(), str(snapshot_id or "").strip())
+        normalized_segment = str(segment or "").strip().lower()
+        normalized_snapshot_id = str(snapshot_id or "").strip()
+        if not normalized_snapshot_id:
+            logger.warning(
+                "Customer portfolio cache skipped because snapshot_id is empty segment=%s",
+                normalized_segment,
+            )
+            return builder()
+
+        cache_key = (normalized_segment, normalized_snapshot_id)
         with self._lock:
             cached = self._customer_portfolio_cache.get(cache_key)
             if cached is not None:

@@ -358,7 +358,7 @@ def _build_scored_summary(df: pd.DataFrame) -> dict:
 
 def _build_customer_page_summary(customer_frame: pd.DataFrame) -> dict:
     if customer_frame.empty:
-        empty_summary = {
+        return {
             "customers": 0,
             "avg_customer_pd": None,
             "avg_customer_score": None,
@@ -368,22 +368,12 @@ def _build_customer_page_summary(customer_frame: pd.DataFrame) -> dict:
             "risk_band_mix": {},
             "top_customers_by_pd": [],
         }
-        empty_summary.update(
-            {
-                "rows": empty_summary["customers"],
-                "average_pd": empty_summary["avg_customer_pd"],
-                "average_score": empty_summary["avg_customer_score"],
-                "actual_delay_rate": empty_summary["avg_actual_delay_rate"],
-                "top_pd_customers": empty_summary["top_customers_by_pd"],
-            }
-        )
-        return empty_summary
 
     pd_series = pd.to_numeric(customer_frame.get("pd", pd.Series(dtype=object)), errors="coerce")
     score_series = pd.to_numeric(customer_frame.get("score", pd.Series(dtype=object)), errors="coerce")
     delay_series = pd.to_numeric(customer_frame.get("average_delay_days", pd.Series(dtype=object)), errors="coerce")
     delay_rate_series = pd.to_numeric(customer_frame.get("actual_delay_rate", pd.Series(dtype=object)), errors="coerce")
-    summary = {
+    return {
         "customers": int(len(customer_frame)),
         "avg_customer_pd": None if pd_series.dropna().empty else round(float(pd_series.fillna(0.0).mean()), 6),
         "avg_customer_score": None if score_series.dropna().empty else round(float(score_series.fillna(0.0).mean()), 2),
@@ -399,16 +389,6 @@ def _build_customer_page_summary(customer_frame: pd.DataFrame) -> dict:
         },
         "top_customers_by_pd": _top_customer_page_records(customer_frame, top_n=5),
     }
-    summary.update(
-        {
-            "rows": summary["customers"],
-            "average_pd": summary["avg_customer_pd"],
-            "average_score": summary["avg_customer_score"],
-            "actual_delay_rate": summary["avg_actual_delay_rate"],
-            "top_pd_customers": summary["top_customers_by_pd"],
-        }
-    )
-    return summary
 
 
 def _aggregate_customer_top_features(records_df: pd.DataFrame, top_n: int = 5) -> list[dict]:
