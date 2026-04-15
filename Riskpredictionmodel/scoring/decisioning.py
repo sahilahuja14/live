@@ -28,8 +28,8 @@ def _feature_names(record: dict) -> list[str]:
 
 def build_credit_suggestions(record: dict, max_items: int = 3) -> list[str]:
     pd_value = _safe_float(record.get("pd"))
-    avg_delay = _safe_float(record.get("customer_avg_delay_days"))
-    total_invoices = _safe_float(record.get("customer_total_invoices"))
+    avg_delay = _safe_float(record.get("average_delay_days", record.get("customer_avg_delay_days")))
+    total_invoices = _safe_float(record.get("invoice_rows_scored", record.get("customer_total_invoices")))
     approval = str(record.get("approval") or "").strip().lower()
     risk_band = str(record.get("risk_band") or "").strip().lower()
     feature_names = _feature_names(record)

@@ -64,3 +64,7 @@ def get_live_db_name() -> str | None:
 
 def get_live_invoice_collection() -> str:
     return _env_value("LIVE_COLLECTION_INVOICES") or "invoicemasters"
+
+
+def get_live_customer_risk_collection() -> str:
+    return _env_value("LIVE_COLLECTION_CUSTOMER_RISK") or "customerriskmasters"

@@ -22,6 +22,7 @@ CUSTOMER_AGGREGATE_DEFAULTS = {
     "customer_max_delay_days": 0.0,
     "customer_delay_rate": 0.0,
 }
+_NULL_TEXT_MARKERS = {"", "nan", "none", "<na>", "nat"}
 
 
 def _normalize_customer_join_key(series: pd.Series) -> pd.Series:
@@ -29,6 +30,7 @@ def _normalize_customer_join_key(series: pd.Series) -> pd.Series:
         series.fillna("")
         .astype(str)
         .str.strip()
+        .replace({marker: "" for marker in _NULL_TEXT_MARKERS})
     )
 
 

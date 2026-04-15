@@ -55,12 +55,32 @@ def _first_present_value(series: pd.Series):
     return None
 
 
+def _frame_series(df: pd.DataFrame, column: str, default=None) -> pd.Series:
+    if column in df.columns:
+        return df[column]
+    return pd.Series(default, index=df.index)
+
+
+def _effective_delay_flag_series(df: pd.DataFrame, delay_series: pd.Series | None = None) -> pd.Series:
+    label_series = pd.to_numeric(_frame_series(df, "is_delayed"), errors="coerce")
+    if label_series.isna().all():
+        label_series = pd.to_numeric(_frame_series(df, "target"), errors="coerce")
+
+    effective_delay = label_series.copy()
+    if delay_series is None:
+        delay_series = pd.to_numeric(_frame_series(df, "delay_days"), errors="coerce")
+
+    overdue_fallback = delay_series.fillna(0.0).gt(0).astype(float)
+    effective_delay = effective_delay.where(effective_delay.notna(), overdue_fallback)
+    return effective_delay.fillna(0.0)
+
+
 def _display_amount_series(df: pd.DataFrame) -> pd.Series:
-    taxable_amount = pd.to_numeric(df.get(AMOUNT_COL), errors="coerce").fillna(0.0)
-    gross_amount = pd.to_numeric(
-        df.get("totalAmountB", df.get("grossAmount", pd.Series(dtype=object))),
-        errors="coerce",
-    )
+    taxable_amount = pd.to_numeric(_frame_series(df, AMOUNT_COL), errors="coerce").fillna(0.0)
+    gross_source = _frame_series(df, "totalAmountB")
+    if gross_source.isna().all():
+        gross_source = _frame_series(df, "grossAmount")
+    gross_amount = pd.to_numeric(gross_source, errors="coerce")
     if gross_amount.dropna().empty:
         return taxable_amount
     return gross_amount.fillna(taxable_amount)
@@ -95,7 +115,7 @@ def _weighted_customer_pd(
     total_open_invoices = int(normalized_open_mask.sum())
     use_open_invoices = bool(normalized_open_mask.any())
     population = "open_invoices" if use_open_invoices else "all_invoices_no_open"
-    base_mask = open_mask if use_open_invoices else pd.Series(True, index=pd_series.index)
+    base_mask = normalized_open_mask if use_open_invoices else pd.Series(True, index=pd_series.index)
     selected_pd = pd_series[base_mask].fillna(0.0)
     selected_amount = amount_series[base_mask].fillna(0.0).clip(lower=0.0)
 
@@ -333,8 +353,7 @@ def _build_scored_summary(df: pd.DataFrame) -> dict:
         }
 
     pd_series = pd.to_numeric(df.get("pd", pd.Series(dtype=object)), errors="coerce").fillna(0.0)
-    target_source = df.get("is_delayed", df.get("actual_delay_rate", pd.Series(dtype=object)))
-    target_series = pd.to_numeric(target_source, errors="coerce").fillna(0.0)
+    target_series = _effective_delay_flag_series(df)
     score_series = pd.to_numeric(df.get("score", pd.Series(dtype=object)), errors="coerce")
     actual_delay_rate = None if target_series.empty else round(float(target_series.mean()), 6)
     average_pd = None if pd_series.empty else round(float(pd_series.mean()), 6)
@@ -454,26 +473,26 @@ def _build_customer_portfolio_record(
         raise ValueError("Customer portfolio record requires at least one invoice row.")
 
     df = records_df.copy().reset_index(drop=True)
-    pd_series = pd.to_numeric(df.get("pd"), errors="coerce").fillna(0.0)
-    delay_series = pd.to_numeric(df.get("delay_days"), errors="coerce")
-    target_series = pd.to_numeric(df.get("is_delayed"), errors="coerce").fillna(0.0)
-    taxable_amount_series = pd.to_numeric(df.get(AMOUNT_COL), errors="coerce").fillna(0.0)
+    pd_series = pd.to_numeric(_frame_series(df, "pd"), errors="coerce").fillna(0.0)
+    delay_series = pd.to_numeric(_frame_series(df, "delay_days"), errors="coerce")
+    target_series = _effective_delay_flag_series(df, delay_series)
+    taxable_amount_series = pd.to_numeric(_frame_series(df, AMOUNT_COL), errors="coerce").fillna(0.0)
     display_amount_series = _display_amount_series(df)
-    paid_status = df.get("paidStatus", pd.Series(dtype=object)).fillna("").astype(str).str.strip().str.lower()
+    paid_status = _frame_series(df, "paidStatus", "").fillna("").astype(str).str.strip().str.lower()
     open_mask = paid_status != "paid"
 
     resolved_customer_id = str(
         customer_id
-        or _first_present_value(df.get(CUSTOMER_ID_COL, pd.Series(dtype=object)))
+        or _first_present_value(_frame_series(df, CUSTOMER_ID_COL))
         or ""
     ).strip()
-    resolved_customer_name = _first_present_value(df.get(CUSTOMER_NAME_COL, pd.Series(dtype=object)))
+    resolved_customer_name = _first_present_value(_frame_series(df, CUSTOMER_NAME_COL))
     resolved_segment = str(
         segment
-        or _first_present_value(df.get(SEGMENT_COL, pd.Series(dtype=object)))
+        or _first_present_value(_frame_series(df, SEGMENT_COL))
         or "all"
     ).strip().lower()
-    approval_threshold_value = pd.to_numeric(df.get("approval_threshold"), errors="coerce").dropna()
+    approval_threshold_value = pd.to_numeric(_frame_series(df, "approval_threshold"), errors="coerce").dropna()
     if approval_threshold_override is not None:
         approval_threshold = float(approval_threshold_override)
     elif not approval_threshold_value.empty:
@@ -491,49 +510,37 @@ def _build_customer_portfolio_record(
     customer_approval = str(_approval([customer_pd], threshold=approval_threshold)[0])
 
     quality = _feature_quality_payload(feature_quality, row_count=len(df))
-    first_total_invoices = pd.to_numeric(df.get("customer_total_invoices", pd.Series(dtype=object)), errors="coerce").dropna()
-    first_avg_delay = pd.to_numeric(df.get("customer_avg_delay_days", pd.Series(dtype=object)), errors="coerce").dropna()
-    first_avg_invoice = pd.to_numeric(df.get("customer_avg_invoice", pd.Series(dtype=object)), errors="coerce").dropna()
-    first_delay_rate = pd.to_numeric(df.get("customer_delay_rate", pd.Series(dtype=object)), errors="coerce").dropna()
+    effective_delay_rate = round(float(target_series.mean()), 6)
 
     customer_record = {
         "segment": resolved_segment,
         "customerId": resolved_customer_id,
-        CUSTOMER_ID_COL: resolved_customer_id,
         "customerName": resolved_customer_name,
-        CUSTOMER_NAME_COL: resolved_customer_name,
-        SEGMENT_COL: resolved_segment,
         "invoice_rows_scored": int(len(df)),
         "segment_invoice_rows": int(segment_invoice_rows) if segment_invoice_rows is not None else int(len(df)),
         "paid_invoices": int((paid_status == "paid").sum()),
         "open_invoices": int((paid_status != "paid").sum()),
         AMOUNT_COL: round(float(taxable_amount_series.sum()), 2),
         "totalAmountB": round(float(display_amount_series.sum()), 2),
-        "grossAmount": round(float(display_amount_series.sum()), 2),
         "average_invoice_amount": round(float(display_amount_series.mean()), 2),
         "average_taxable_amount": round(float(taxable_amount_series.mean()), 2),
-        "actual_delay_rate": round(float(target_series.mean()), 6),
+        "actual_delay_rate": effective_delay_rate,
         "average_delay_days": round(float(delay_series.fillna(0.0).mean()), 2),
         "max_delay_days": None if delay_series.dropna().empty else int(delay_series.max()),
         "average_pd": round(float(pd_series.mean()), 6),
-        "max_pd": round(float(pd_series.max()), 6),
         "max_invoice_pd": round(float(pd_series.max()), 6),
         "pd": round(float(customer_pd), 6),
         "pd_computation_trace": pd_trace,
         "score": customer_score,
         "risk_band": customer_risk_band,
         "approval": customer_approval,
-        "customer_total_invoices": int(first_total_invoices.iloc[0]) if not first_total_invoices.empty else int(len(df)),
-        "customer_avg_delay_days": round(float(first_avg_delay.iloc[0]), 2) if not first_avg_delay.empty else round(float(delay_series.fillna(0.0).mean()), 2),
-        "customer_avg_invoice": round(float(first_avg_invoice.iloc[0]), 2) if not first_avg_invoice.empty else round(float(display_amount_series.mean()), 2),
-        "customer_delay_rate": round(float(first_delay_rate.iloc[0]), 6) if not first_delay_rate.empty else round(float(target_series.mean()), 6),
         "top_features": _aggregate_customer_top_features(df, top_n=5),
-        "model_family": _first_present_value(df.get("model_family", pd.Series(dtype=object))),
-        "model_type": _first_present_value(df.get("model_type", pd.Series(dtype=object))) or model_type,
-        "model_version": _first_present_value(df.get("model_version", pd.Series(dtype=object))) or "unknown",
-        "approval_threshold_policy": _first_present_value(df.get("approval_threshold_policy", pd.Series(dtype=object))),
+        "model_family": _first_present_value(_frame_series(df, "model_family")),
+        "model_type": _first_present_value(_frame_series(df, "model_type")) or model_type,
+        "model_version": _first_present_value(_frame_series(df, "model_version")) or "unknown",
+        "approval_threshold_policy": _first_present_value(_frame_series(df, "approval_threshold_policy")),
         "approval_threshold": approval_threshold,
-        "scoring_timestamp": _first_present_value(df.get("scoring_timestamp", pd.Series(dtype=object))),
+        "scoring_timestamp": _first_present_value(_frame_series(df, "scoring_timestamp")),
     }
     customer_record.update(quality)
     suggestions = build_credit_suggestions(customer_record)
@@ -643,6 +650,39 @@ def _build_customer_summary_payload(
         "customer_summary": _json_safe_value(customer_summary),
         "history_preview": preview_rows,
         "feature_quality": _feature_quality_payload(feature_quality, row_count=len(df)),
+    }
+
+
+def build_customer_profile_payload(
+    *,
+    segment: str,
+    customer_id: str,
+    customer_summary: dict,
+    refresh_applied: bool,
+    summary_source: str = "customerriskmasters",
+) -> dict:
+    summary = dict(customer_summary or {})
+    return {
+        "segment": str(segment or "").strip().lower(),
+        "customerId": str(customer_id or "").strip(),
+        "customer_summary": _json_safe_value(summary),
+        "feature_quality": _json_safe_value(
+            {
+                "feature_validation_passed": summary.get("feature_validation_passed"),
+                "scored_invoice_rows": summary.get("scored_invoice_rows"),
+                "dropped_invoice_rows": summary.get("dropped_invoice_rows"),
+                "missing_feature_count": summary.get("missing_feature_count"),
+                "invalid_object_feature_count": summary.get("invalid_object_feature_count"),
+                "invalid_datetime_feature_count": summary.get("invalid_datetime_feature_count"),
+                "scoring_context": summary.get("scoring_context"),
+            }
+        ),
+        "source": {
+            "summary_source": summary_source,
+            "history_mode": "realtime_background",
+            "history_endpoint": f"/api/risk/customer-history/{str(segment or '').strip().lower()}",
+            "refresh_applied": bool(refresh_applied),
+        },
     }
 
 

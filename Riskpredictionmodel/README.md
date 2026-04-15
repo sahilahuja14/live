@@ -11,7 +11,7 @@ RiskPred is the production scoring service for the `Risk.Main` credit-risk lane.
 - Target: `delay_days > 30`
 - Serving mode: `Risk.Main` only
 - Legacy `invoicemasters` / `customermasters` / payment-simulator path: removed from runtime
-
+download cust report with inv histotty
 ## Repository Layout
 
 ```text
@@ -87,9 +87,9 @@ Important notes:
 
 ```bash
 python -m venv venv
-venv\Scriptsctivate
+venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn api.scoring_api:app --reload --host 0.0.0.0 --port 8000
+uvicorn Riskpredictionmodel.api.scoring_api:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Swagger: `http://127.0.0.1:8000/docs`
@@ -115,9 +115,17 @@ venv\Scripts\python.exe -m unittest discover -s tests -p test_production_risk_ma
 Optional compile sanity check:
 
 ```bash
-venv\Scripts\python.exe -m py_compile api\scoring_api.py api\cache.py scoring\model.py pipeline
-isk_main.py pipeline
-isk_canonical.py
+venv\Scripts\python.exe -m py_compile ^
+Riskpredictionmodel\api\scoring_api.py ^
+Riskpredictionmodel\api\analysis\scoring_helpers.py ^
+Riskpredictionmodel\api\analysis\customer_helpers.py ^
+Riskpredictionmodel\api\routers\scoring.py ^
+Riskpredictionmodel\api\routers\customers.py ^
+Riskpredictionmodel\api\routers\system.py ^
+Riskpredictionmodel\api\cache\__init__.py ^
+Riskpredictionmodel\scoring\model.py ^
+Riskpredictionmodel\pipeline\risk_main.py ^
+Riskpredictionmodel\pipeline\risk_canonical.py
 ```
 
 ## Operational Notes

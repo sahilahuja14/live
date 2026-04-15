@@ -568,8 +568,11 @@ class ProductionRiskMainTests(unittest.TestCase):
                 customer_summary = customer_response.json()["customer_summary"]
                 self.assertEqual(customer_summary["invoice_rows_scored"], 3)
                 self.assertEqual(customer_summary["segment_invoice_rows"], 2)
-                self.assertEqual(customer_summary["customer_total_invoices"], 3)
                 self.assertEqual(customer_summary["pd_computation_trace"]["population"], "open_invoices")
+                self.assertNotIn("customer_total_invoices", customer_summary)
+                self.assertNotIn("customer_avg_delay_days", customer_summary)
+                self.assertNotIn("customer_avg_invoice", customer_summary)
+                self.assertNotIn("customer_delay_rate", customer_summary)
 
                 customer_list_response = client.get("/score-customers/air?limit=10&refresh=true")
                 self.assertEqual(customer_list_response.status_code, 200)
@@ -580,7 +583,9 @@ class ProductionRiskMainTests(unittest.TestCase):
                 acme_record = next(row for row in customer_records if row["customerId"] == "CUST-001")
                 self.assertEqual(acme_record["invoice_rows_scored"], 3)
                 self.assertEqual(acme_record["segment_invoice_rows"], 2)
-                self.assertEqual(acme_record["customer_total_invoices"], 3)
+                self.assertNotIn("customer_total_invoices", acme_record)
+                self.assertNotIn("grossAmount", acme_record)
+                self.assertNotIn("max_pd", acme_record)
                 self.assertIn("invoice_count", acme_record["top_features"][0])
 
                 customer_history_response = client.get("/customer-history/air?customer_id=CUST-001&limit=10&refresh=true")
@@ -793,6 +798,57 @@ class ProductionRiskMainTests(unittest.TestCase):
         self.assertEqual(calls["n"], 2)
         self.assertEqual(first.to_dict(orient="records"), second.to_dict(orient="records"))
         self.assertEqual(third.to_dict(orient="records"), [{"customerId": "C1", "pd": 0.1}])
+
+    def test_customer_portfolio_cache_uses_store_before_builder(self):
+        cache = self._make_cache()
+
+        class DummyStore:
+            enabled = True
+
+            def load_portfolio(self, *, segment: str, snapshot_id: str) -> pd.DataFrame:
+                return pd.DataFrame([{"customerId": "C9", "pd": 0.9, "segment": segment}])
+
+            def persist_portfolio(self, *, segment: str, snapshot_id: str, portfolio_frame: pd.DataFrame) -> None:
+                raise AssertionError("persist_portfolio should not be called in this test")
+
+        cache._portfolio_cache._store = DummyStore()
+        calls = {"n": 0}
+
+        def builder():
+            calls["n"] += 1
+            return pd.DataFrame([{"customerId": "C1", "pd": 0.1}])
+
+        result = cache.get_customer_portfolio(segment="air", snapshot_id="snap-store", builder=builder)
+        self.assertEqual(calls["n"], 0)
+        self.assertEqual(result.to_dict(orient="records"), [{"customerId": "C9", "pd": 0.9, "segment": "air"}])
+
+    def test_customer_portfolio_persist_writes_to_store(self):
+        cache = self._make_cache()
+        persisted: list[tuple[str, str, list[dict]]] = []
+
+        class DummyStore:
+            enabled = True
+
+            def load_portfolio(self, *, segment: str, snapshot_id: str) -> pd.DataFrame:
+                return pd.DataFrame()
+
+            def persist_portfolio(self, *, segment: str, snapshot_id: str, portfolio_frame: pd.DataFrame) -> None:
+                persisted.append((segment, snapshot_id, portfolio_frame.to_dict(orient="records")))
+
+        cache._portfolio_cache._store = DummyStore()
+        frame = pd.DataFrame([{"customerId": "C2", "pd": 0.42, "segment": "air"}])
+        cache._portfolio_cache.persist_customer_portfolio(segment="air", snapshot_id="snap-persist", portfolio_frame=frame)
+
+        self.assertEqual(
+            persisted,
+            [("air", "snap-persist", [{"customerId": "C2", "pd": 0.42, "segment": "air"}])],
+        )
+        cached = cache.get_customer_portfolio(
+            segment="air",
+            snapshot_id="snap-persist",
+            builder=lambda: pd.DataFrame([{"customerId": "fallback", "pd": 0.1}]),
+        )
+        self.assertEqual(cached.to_dict(orient="records"), [{"customerId": "C2", "pd": 0.42, "segment": "air"}])
 
     def test_model_performance_degrades_when_snapshot_unavailable(self):
         with patch.dict(

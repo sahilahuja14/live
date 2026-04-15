@@ -25,6 +25,9 @@ async def lifespan(app: FastAPI):
     setup_logging()
     connect_db()
     risk_scoring_api._startup_checks()
+    stream_manager.configure_risk_runtime(
+        refresh_callback=lambda: risk_scoring_api._api_cache.refresh(trigger="websocket_request")
+    )
     risk_scoring_api._api_cache.start()
     await stream_manager.start_watching()
     try:
