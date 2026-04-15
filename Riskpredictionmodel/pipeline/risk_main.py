@@ -14,6 +14,7 @@ from .utils import flatten_dict as flatten_payload
 
 _CURRENT_ROW_COL = "_scoring_row_flag"
 _CURRENT_ORDER_COL = "_scoring_row_order"
+_NULL_TEXT_MARKERS = {"", "nan", "none", "<na>", "nat"}
 
 
 def fetch_production_risk_main_dataset(query: dict | None = None, limit: int | None = None) -> pd.DataFrame:
@@ -66,6 +67,50 @@ def build_risk_main_scoring_frame(
     return current_features.drop(columns=[_CURRENT_ROW_COL, _CURRENT_ORDER_COL], errors="ignore")
 
 
+CUSTOMER_ID_QUERY_FIELDS = (
+    "customer.customerId",
+    "customer.id",
+    "customerId",
+)
+
+
+def _clean_customer_ids(customer_ids: list[str]) -> list[str]:
+    output: set[str] = set()
+    for value in customer_ids:
+        cleaned = str(value).strip()
+        if not cleaned or cleaned.lower() in _NULL_TEXT_MARKERS:
+            continue
+        output.add(cleaned)
+    return sorted(output)
+
+
+def _build_customer_history_query(customer_ids: list[str]) -> dict | None:
+    normalized_ids = _clean_customer_ids(customer_ids)
+    if not normalized_ids:
+        return None
+
+    return {
+        "$or": [
+            {field: {"$in": normalized_ids}}
+            for field in CUSTOMER_ID_QUERY_FIELDS
+        ]
+    }
+
+
+def fetch_production_risk_main_customer_history(customer_ids: list[str]) -> pd.DataFrame:
+    query = _build_customer_history_query(customer_ids)
+    if query is None:
+        return pd.DataFrame()
+    return fetch_risk_main_frame(query=query)
+
+
+def fetch_production_risk_main_customer_aggregates(customer_ids: list[str]) -> pd.DataFrame:
+    history = fetch_production_risk_main_customer_history(customer_ids)
+    if history.empty:
+        return pd.DataFrame()
+    return build_risk_main_customer_aggregates(history, customer_ids)
+
+
 def build_risk_main_customer_aggregates(full_df: pd.DataFrame, customer_ids: list[str]) -> pd.DataFrame:
     if full_df is None or full_df.empty or "customer.customerId" not in full_df.columns:
         return pd.DataFrame()
@@ -74,12 +119,29 @@ def build_risk_main_customer_aggregates(full_df: pd.DataFrame, customer_ids: lis
     if not normalized_ids:
         return pd.DataFrame()
 
-    history = full_df[full_df["customer.customerId"].fillna("").astype(str).isin(normalized_ids)].copy()
+    customer_key_series = (
+        full_df["customer.customerId"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .replace({marker: "" for marker in _NULL_TEXT_MARKERS})
+    )
+    history = full_df[customer_key_series.isin(normalized_ids)].copy()
     if history.empty:
         return pd.DataFrame()
 
     canonical = canonicalize_risk_main_frame(history)
     if canonical.empty or "customer_key" not in canonical.columns:
+        return pd.DataFrame()
+    canonical["customer_key"] = (
+        canonical["customer_key"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .replace({marker: "" for marker in _NULL_TEXT_MARKERS})
+    )
+    canonical = canonical[canonical["customer_key"] != ""].copy()
+    if canonical.empty:
         return pd.DataFrame()
 
     grouped = (

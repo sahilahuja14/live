@@ -1,8 +1,9 @@
 import asyncio
 import json
+import os
 import time
 import hashlib
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime, date
 from fastapi import WebSocket
 from ..database import get_analytics_database, get_all_async_queryFor_databases
@@ -25,13 +26,21 @@ class StreamManager:
         self.client_stats_configs: Dict[WebSocket, dict] = {}
         # Store client finance stats config: WebSocket -> FinanceConfig (dict)
         self.client_finance_configs: Dict[WebSocket, dict] = {}
-        
+        # Store risk customer subscriptions: WebSocket -> set[(customer_id, segment)]
+        self.client_risk_configs: Dict[WebSocket, set[tuple[str, str]]] = {}
+
         self.is_watching = False
         self._watch_task = None
+        self._loop = None
         self.qb = QueryBuilder()
-        
+        self._risk_refresh_callback: Callable[[], None] | None = None
+        self._risk_snapshot_meta: dict = {}
+
         # --- API SCHEDULING (Polling) ---
-        self.POLL_INTERVAL_SECONDS = 30
+        self.POLL_INTERVAL_SECONDS = max(
+            int(os.getenv("DASHBOARD_STREAM_POLL_INTERVAL_SECONDS", "300")),
+            30,
+        )
         
         # Debounce/Throttle state
         self.DEBOUNCE_SECONDS = 2.0
@@ -39,6 +48,7 @@ class StreamManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        self.client_risk_configs[websocket] = set()
         print(f"WebSocket connected. Total: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
@@ -50,7 +60,15 @@ class StreamManager:
                 del self.client_stats_configs[websocket]
             if websocket in self.client_finance_configs:
                 del self.client_finance_configs[websocket]
+            if websocket in self.client_risk_configs:
+                del self.client_risk_configs[websocket]
             print(f"WebSocket disconnected. Total: {len(self.active_connections)}")
+
+    def configure_risk_runtime(self, refresh_callback: Callable[[], None] | None = None):
+        self._risk_refresh_callback = refresh_callback
+
+    def set_risk_event_loop(self, loop):
+        self._loop = loop
 
     async def handle_client_message(self, websocket: WebSocket, message_text: str):
         try:
@@ -103,9 +121,36 @@ class StreamManager:
                 stats = await self._run_finance_calculation(payload)
                 response = { "type": "FINANCE_DATA", "payload": stats }
                 await websocket.send_text(json.dumps(response, default=json_serial))
+
+            elif msg_type == "SUBSCRIBE_CUSTOMER":
+                payload = data.get("payload", {})
+                customer_id = str(payload.get("customer_id") or "").strip()
+                segment = str(payload.get("segment") or "all").strip().lower()
+                if customer_id:
+                    self.client_risk_configs.setdefault(websocket, set()).add((customer_id, segment))
+
+            elif msg_type == "UNSUBSCRIBE_CUSTOMER":
+                payload = data.get("payload", {})
+                customer_id = str(payload.get("customer_id") or "").strip()
+                segment = str(payload.get("segment") or "all").strip().lower()
+                if customer_id:
+                    self.client_risk_configs.setdefault(websocket, set()).discard((customer_id, segment))
+
+            elif msg_type == "REQUEST_REFRESH":
+                await self._broadcast_risk_refresh_started(triggered_by="client_request")
+                if self._risk_refresh_callback is not None:
+                    asyncio.create_task(self._run_risk_refresh())
                 
         except Exception as e:
             print(f"Error handling client message: {e}")
+
+    async def _run_risk_refresh(self):
+        if self._risk_refresh_callback is None:
+            return
+        try:
+            await asyncio.to_thread(self._risk_refresh_callback)
+        except Exception as e:
+            print(f"Error running risk refresh: {e}")
 
     async def _run_stats_calculation(self, config: dict) -> dict:
         try:
@@ -190,6 +235,7 @@ class StreamManager:
         if self.is_watching:
             return
         self.is_watching = True
+        self._loop = asyncio.get_running_loop()
         
         # --- API SCHEDULING (Polling) ---
         self._watch_task = asyncio.create_task(self._api_scheduling_loop())
@@ -216,13 +262,21 @@ class StreamManager:
         while self.is_watching:
             try:
                 if self.active_connections:
-                    # Note: We trigger a refresh for "scheduled_poll".
-                    await self._handle_change("scheduled_poll")
+                    if self._has_scheduled_poll_subscribers():
+                        await self._handle_change("scheduled_poll")
+                    await self._broadcast_risk_heartbeat()
             except Exception as e:
                 print(f"Error in API Scheduling Loop: {e}")
             
             # Sleep for the interval before checking again
             await asyncio.sleep(self.POLL_INTERVAL_SECONDS)
+
+    def _has_scheduled_poll_subscribers(self) -> bool:
+        return bool(
+            self.client_configs
+            or self.client_stats_configs
+            or self.client_finance_configs
+        )
 
     async def _handle_change(self, source: str):
         # Unified change handler for all collections
@@ -370,5 +424,122 @@ class StreamManager:
                 await websocket.send_text(json.dumps(response, default=json_serial))
             except Exception as e:
                 print(f"Error sending finance stats update: {e}")
+
+    async def _broadcast_risk_refresh_started(self, triggered_by: str = "auto_refresh"):
+        await self._broadcast_risk_message(
+            {
+                "type": "REFRESH_STARTED",
+                "payload": {"triggered_by": triggered_by},
+            }
+        )
+
+    async def publish_risk_snapshot(self, snapshot: dict):
+        self._risk_snapshot_meta = {
+            "snapshot_id": snapshot.get("snapshot_id"),
+            "generated_at": snapshot.get("generated_at"),
+            "segment_counts": snapshot.get("segment_counts", {}),
+            "rows": snapshot.get("rows", 0),
+            "ts": snapshot.get("ts"),
+        }
+        await self._broadcast_risk_message(
+            {
+                "type": "SNAPSHOT_READY",
+                "payload": {
+                    "snapshot_id": snapshot.get("snapshot_id"),
+                    "generated_at": snapshot.get("generated_at"),
+                    "segment_counts": snapshot.get("segment_counts", {}),
+                    "rows": snapshot.get("rows", 0),
+                },
+            }
+        )
+        await self._broadcast_risk_customer_updates(snapshot)
+
+    def notify_risk_snapshot_ready_threadsafe(self, snapshot: dict):
+        if self._loop is None or not self.active_connections:
+            return
+        asyncio.run_coroutine_threadsafe(self.publish_risk_snapshot(snapshot), self._loop)
+
+    def notify_risk_refresh_started_threadsafe(self, triggered_by: str = "auto_refresh"):
+        if self._loop is None or not self.active_connections:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._broadcast_risk_refresh_started(triggered_by),
+            self._loop,
+        )
+
+    async def _broadcast_risk_customer_updates(self, snapshot: dict):
+        if not self.active_connections:
+            return
+
+        customer_lookup: dict[tuple[str, str], dict] = {}
+        for record in snapshot.get("records", []):
+            customer_id = str(record.get("customer.customerId") or "").strip()
+            segment = str(record.get("shipmentDetails.queryFor") or record.get("segment") or "all").strip().lower()
+            if not customer_id:
+                continue
+
+            risk_payload = {
+                "pd": record.get("pd"),
+                "risk_band": record.get("risk_band"),
+                "approval": record.get("approval"),
+            }
+            customer_lookup.setdefault((customer_id, segment), risk_payload)
+            customer_lookup.setdefault((customer_id, "all"), risk_payload)
+
+        for websocket in list(self.active_connections):
+            subscriptions = self.client_risk_configs.get(websocket, set())
+            for customer_id, segment in subscriptions:
+                risk_payload = customer_lookup.get((customer_id, segment))
+                if risk_payload is None:
+                    continue
+                try:
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "CUSTOMER_UPDATED",
+                                "payload": {
+                                    "customer_id": customer_id,
+                                    "segment": segment,
+                                    "snapshot_id": snapshot.get("snapshot_id"),
+                                    **risk_payload,
+                                },
+                            },
+                            default=json_serial,
+                        )
+                    )
+                except Exception as e:
+                    print(f"Error sending risk customer update: {e}")
+
+    async def _broadcast_risk_heartbeat(self):
+        if not self.active_connections:
+            return
+
+        snapshot_ts = self._risk_snapshot_meta.get("ts")
+        snapshot_age_seconds = None
+        if snapshot_ts:
+            snapshot_age_seconds = max(int(time.time() - float(snapshot_ts)), 0)
+
+        await self._broadcast_risk_message(
+            {
+                "type": "HEARTBEAT",
+                "payload": {
+                    "status": "ok",
+                    "snapshot_age_seconds": snapshot_age_seconds,
+                    "snapshot_id": self._risk_snapshot_meta.get("snapshot_id"),
+                    "timestamp_utc": datetime.utcnow().isoformat() + "Z",
+                },
+            }
+        )
+
+    async def _broadcast_risk_message(self, message: dict):
+        dead_connections = []
+        for websocket in list(self.active_connections):
+            try:
+                await websocket.send_text(json.dumps(message, default=json_serial))
+            except Exception:
+                dead_connections.append(websocket)
+
+        for websocket in dead_connections:
+            self.disconnect(websocket)
 
 stream_manager = StreamManager()

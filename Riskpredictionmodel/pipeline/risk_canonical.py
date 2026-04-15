@@ -77,6 +77,24 @@ _LAST_LIVE_COVERAGE: dict[str, Any] = {}
 _LAST_COLLECTIONS_FOUND: list[str] = []
 MIN_VALID_TERMS_DAYS = 0.0
 MAX_VALID_TERMS_DAYS = 365.0
+LIVE_REQUIRED_PASSTHROUGH_TARGETS = {
+    "bookingId",
+    "companyCode",
+    "paymentDate_raw",
+    "paymentDetailsRaw",
+    "legacy.invoice_ref_raw",
+}
+LIVE_REQUIRED_PASSTHROUGH_FIELDS = {
+    live_path: normalized_path
+    for live_path, normalized_path in LIVE_PASSTHROUGH_FIELDS.items()
+    if normalized_path in LIVE_REQUIRED_PASSTHROUGH_TARGETS
+}
+REQUIRED_LIVE_INDEXES = {
+    "idx_customer_date": [("customer.customerId", 1), ("invoiceDate", -1), ("_id", -1)],
+    "idx_segment_date": [("shipmentDetails.queryFor", 1), ("invoiceDate", -1), ("_id", -1)],
+    "idx_status_due": [("paidStatus", 1), ("invoiceDueDate", 1)],
+}
+_NULL_TEXT_MARKERS = {"", "nan", "none", "<na>", "nat"}
 
 
 def _series_from_frame(df: pd.DataFrame, column: str, default=None) -> pd.Series:
@@ -106,7 +124,7 @@ def _coerce_terms_days(value):
 
 def _build_live_projection() -> dict[str, int]:
     # Parent paths must win over child paths to avoid Mongo projection collisions.
-    all_paths = set(LIVE_TO_NORMALIZED) | set(LIVE_PASSTHROUGH_FIELDS)
+    all_paths = set(LIVE_TO_NORMALIZED) | set(LIVE_REQUIRED_PASSTHROUGH_FIELDS)
     sorted_paths = sorted(all_paths, key=lambda path: (path.count("."), path))
 
     selected: list[str] = []
@@ -147,7 +165,7 @@ def _normalize_live_doc(doc: dict) -> dict:
             continue
         normalized[normalized_path] = value
 
-    for live_path, normalized_path in LIVE_PASSTHROUGH_FIELDS.items():
+    for live_path, normalized_path in LIVE_REQUIRED_PASSTHROUGH_FIELDS.items():
         if live_path not in flat:
             continue
         value = flat.get(live_path)
@@ -165,6 +183,22 @@ def _normalize_key(value: Any) -> str | None:
     if text is not None:
         return text
     return str(value)
+
+
+def _clean_text_value(value: Any, *, default: str = "") -> str:
+    if is_missing(value):
+        return default
+    text = safe_text(value)
+    if text is None:
+        text = str(value).strip()
+    normalized = str(text).strip()
+    if normalized.lower() in _NULL_TEXT_MARKERS:
+        return default
+    return normalized
+
+
+def _clean_text_series(series: pd.Series, *, default: str = "") -> pd.Series:
+    return series.map(lambda value: _clean_text_value(value, default=default))
 
 
 def _first_present(*values: Any) -> Any:
@@ -870,6 +904,8 @@ def fetch_risk_main_frame(query: dict | None = None, limit: int | None = None) -
 def inspect_risk_main_indexes() -> dict:
     database = get_live_database()
     available_collections = sorted(database.list_collection_names())
+    invoice_collection = database[get_live_invoice_collection()]
+    index_report = _inspect_collection_indexes(invoice_collection)
     return {
         "mode": "live_collections",
         "database": get_live_db_name() or database.name,
@@ -878,6 +914,10 @@ def inspect_risk_main_indexes() -> dict:
         "legacy_collection_name": PRODUCTION_RISK_COLLECTION,
         "available_collections": available_collections,
         "projection_fields": sorted(_build_live_projection().keys()),
+        "invoice_collection_indexes": index_report["indexes"],
+        "required_indexes": index_report["required_indexes"],
+        "missing_required_indexes": index_report["missing_required_indexes"],
+        "warnings": index_report["warnings"],
     }
 
 
@@ -929,9 +969,10 @@ def canonicalize_risk_main_frame(
     else:
         partial_payment = pd.Series(partial_payment, index=canonical.index, dtype="boolean")
     canonical["partial_payment_flag"] = partial_payment.fillna(False).astype(bool)
-    canonical["paid_status"] = canonical.get("paid_status", "Pending").fillna("Pending").astype(str)
+    paid_status = _series_from_frame(canonical, "paid_status")
+    canonical["paid_status"] = _clean_text_series(paid_status, default="Pending").replace({"": "Pending"})
     canonical["source_system"] = "risk_main"
-    canonical["company"] = _series_from_frame(df, "companyCode").fillna("").astype(str)
+    canonical["company"] = _clean_text_series(_series_from_frame(df, "companyCode"), default="")
     canonical["payment_date_raw"] = _series_from_frame(df, "paymentDate_raw")
     canonical["payment_details_raw"] = _series_from_frame(df, "paymentDetailsRaw")
     canonical["invoice_ref_raw"] = _series_from_frame(df, "legacy.invoice_ref_raw")
@@ -979,7 +1020,10 @@ def canonicalize_risk_main_frame(
     canonical["aging_total_to_invoice_ratio"] = [
         safe_ratio(age_total, amount) for age_total, amount in zip(canonical["aging_total"], canonical["invoice_amount"])
     ]
-    canonical["customer_key"] = canonical["customer_key"].fillna(canonical["customer_name"]).astype(str)
+    canonical["customer_key"] = _clean_text_series(
+        canonical["customer_key"].where(canonical["customer_key"].notna(), canonical["customer_name"]),
+        default="",
+    )
     return canonical
 
 

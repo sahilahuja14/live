@@ -90,3 +90,11 @@ def require_api_key(
         raise _unauthorized()
 
     return
+
+
+def is_valid_websocket_api_key(api_key: str | None) -> bool:
+    expected_api_key = _expected_api_key()
+    provided_api_key = str(api_key or "").strip()
+    if not expected_api_key:
+        return False
+    return provided_api_key == expected_api_key

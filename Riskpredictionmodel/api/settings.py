@@ -45,7 +45,7 @@ def _env_csv(name: str, default: str = "") -> tuple[str, ...]:
 
 def load_api_settings() -> ApiSettings:
     auto_refresh_enabled = os.getenv("API_AUTO_REFRESH_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
-    auto_refresh_interval_seconds = int(os.getenv("API_AUTO_REFRESH_INTERVAL_SECONDS", "1800"))
+    auto_refresh_interval_seconds = int(os.getenv("API_AUTO_REFRESH_INTERVAL_SECONDS", "21600"))
     dataset_cache_ttl_seconds = int(
         os.getenv("API_DATASET_CACHE_TTL_SECONDS", str(max(auto_refresh_interval_seconds + 300, 1800)))
     )

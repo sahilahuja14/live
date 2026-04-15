@@ -23,9 +23,9 @@ _live_client_lock = Lock()
 
 def _mongo_options() -> dict:
     return {
-        "serverSelectionTimeoutMS": int(os.getenv("MONGO_SERVER_SELECTION_TIMEOUT_MS", "5000")),
-        "connectTimeoutMS": int(os.getenv("MONGO_CONNECT_TIMEOUT_MS", "5000")),
-        "socketTimeoutMS": int(os.getenv("MONGO_SOCKET_TIMEOUT_MS", "10000")),
+        "serverSelectionTimeoutMS": int(os.getenv("MONGO_SERVER_SELECTION_TIMEOUT_MS", "10000")),
+        "connectTimeoutMS": int(os.getenv("MONGO_CONNECT_TIMEOUT_MS", "10000")),
+        "socketTimeoutMS": int(os.getenv("MONGO_SOCKET_TIMEOUT_MS", "30000")),
         "maxPoolSize": int(os.getenv("MONGO_MAX_POOL_SIZE", "20")),
     }
 
