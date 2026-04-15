@@ -99,27 +99,28 @@ class CustomerRiskStore:
 
         collection = get_live_database()[self._collection_name]
         query = self._portfolio_query(segment=normalized_segment, search=search)
-        total = int(collection.count_documents(query))
-        if total <= 0:
+        pipeline = [
+            {"$match": query},
+            {"$sort": {"pd": -1, "average_delay_days": -1, "score": 1, "customerId": 1}},
+            {
+                "$facet": {
+                    "rows": [
+                        {"$skip": max(int(offset), 0)},
+                        {"$limit": max(int(page_size), 1)},
+                        {"$project": self._EXCLUDED_PORTFOLIO_FIELDS},
+                    ],
+                    "meta": [{"$count": "total"}],
+                }
+            },
+        ]
+        result = list(collection.aggregate(pipeline, allowDiskUse=True))
+        if not result:
             return pd.DataFrame(), 0
 
-        cursor = (
-            collection.find(
-                query,
-                self._EXCLUDED_PORTFOLIO_FIELDS,
-            )
-            .sort(
-                [
-                    ("pd", -1),
-                    ("average_delay_days", -1),
-                    ("score", 1),
-                    ("customerId", 1),
-                ]
-            )
-            .skip(max(int(offset), 0))
-            .limit(max(int(page_size), 1))
-        )
-        rows = list(cursor)
+        payload = result[0]
+        rows = list(payload.get("rows") or [])
+        meta = list(payload.get("meta") or [])
+        total = int((meta[0] or {}).get("total") or 0) if meta else 0
         if not rows:
             return pd.DataFrame(), total
         return pd.DataFrame(rows), total
@@ -216,7 +217,7 @@ class CustomerRiskStore:
             },
         ]
 
-        result = list(collection.aggregate(pipeline, allowDiskUse=False))
+        result = list(collection.aggregate(pipeline, allowDiskUse=True))
         if not result:
             return self._empty_summary()
 
@@ -269,38 +270,75 @@ class CustomerRiskStore:
         if not self.enabled or not normalized_lookup:
             return None
 
+        pattern = re.escape(normalized_lookup)
         collection = get_live_database()[self._collection_name]
-        queries = [
-            {"customerId": normalized_lookup},
-            {"customerId": {"$regex": f"^{re.escape(normalized_lookup)}$", "$options": "i"}},
-            {"customerName": {"$regex": f"^{re.escape(normalized_lookup)}$", "$options": "i"}},
-            {"customerId": {"$regex": re.escape(normalized_lookup), "$options": "i"}},
-            {"customerName": {"$regex": re.escape(normalized_lookup), "$options": "i"}},
+        pipeline = [
+            {
+                "$match": {
+                    "store_version": self.STORE_VERSION,
+                    "segment": normalized_segment,
+                    "$or": [
+                        {"customerId": normalized_lookup},
+                        {"customerId": {"$regex": f"^{pattern}$", "$options": "i"}},
+                        {"customerName": {"$regex": f"^{pattern}$", "$options": "i"}},
+                        {"customerId": {"$regex": pattern, "$options": "i"}},
+                        {"customerName": {"$regex": pattern, "$options": "i"}},
+                    ],
+                }
+            },
+            {
+                "$addFields": {
+                    "_match_priority": {
+                        "$switch": {
+                            "branches": [
+                                {"case": {"$eq": ["$customerId", normalized_lookup]}, "then": 0},
+                                {
+                                    "case": {
+                                        "$regexMatch": {
+                                            "input": {"$ifNull": ["$customerId", ""]},
+                                            "regex": f"^{pattern}$",
+                                            "options": "i",
+                                        }
+                                    },
+                                    "then": 1,
+                                },
+                                {
+                                    "case": {
+                                        "$regexMatch": {
+                                            "input": {"$ifNull": ["$customerName", ""]},
+                                            "regex": f"^{pattern}$",
+                                            "options": "i",
+                                        }
+                                    },
+                                    "then": 2,
+                                },
+                                {
+                                    "case": {
+                                        "$regexMatch": {
+                                            "input": {"$ifNull": ["$customerId", ""]},
+                                            "regex": pattern,
+                                            "options": "i",
+                                        }
+                                    },
+                                    "then": 3,
+                                },
+                            ],
+                            "default": 4,
+                        }
+                    }
+                }
+            },
+            {"$sort": {"_match_priority": 1, "pd": -1, "average_delay_days": -1, "score": 1, "customerId": 1}},
+            {"$limit": 1},
+            {
+                "$project": {
+                    "_match_priority": 0,
+                    **self._EXCLUDED_PORTFOLIO_FIELDS,
+                }
+            },
         ]
-        for candidate in queries:
-            cursor = (
-                collection.find(
-                    {
-                        "store_version": self.STORE_VERSION,
-                        "segment": normalized_segment,
-                        **candidate,
-                    },
-                    self._EXCLUDED_PORTFOLIO_FIELDS,
-                )
-                .sort(
-                    [
-                        ("pd", -1),
-                        ("average_delay_days", -1),
-                        ("score", 1),
-                        ("customerId", 1),
-                    ]
-                )
-                .limit(1)
-            )
-            rows = list(cursor)
-            if rows:
-                return dict(rows[0])
-        return None
+        rows = list(collection.aggregate(pipeline, allowDiskUse=False))
+        return dict(rows[0]) if rows else None
 
     def persist_portfolio(self, *, segment: str, snapshot_id: str, portfolio_frame: pd.DataFrame) -> None:
         normalized_snapshot_id = str(snapshot_id or "").strip()
