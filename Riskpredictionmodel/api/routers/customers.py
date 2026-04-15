@@ -132,7 +132,7 @@ def register_customer_routes(
                 customer_service=customer_service,
                 segment=segment,
                 customer_id=customer_key,
-                refresh=requested_refresh,
+                refresh=False,
             )
 
             response = build_customer_history_response(
@@ -144,7 +144,7 @@ def register_customer_routes(
                 offset=offset,
                 include_features=include_features,
                 include_canonical=include_canonical,
-                refresh=False,
+                refresh=requested_refresh,
                 customer_summary_override=customer_summary_override,
             )
             response["lookup"] = {
@@ -443,9 +443,6 @@ def register_customer_routes(
                     raise HTTPException(status_code=422, detail="Cursor page size does not match request limit.")
                 offset = max(int(cursor_payload.get("offset") or 0), 0)
 
-            if requested_refresh:
-                api_cache.refresh(trigger=f"customer_detail_refresh:{str(segment or '').strip().lower()}:{customer_key}")
-
             response_payload = build_customer_history_response(
                 customer_service=customer_service,
                 threshold_resolver=threshold_resolver,
@@ -455,7 +452,7 @@ def register_customer_routes(
                 offset=offset,
                 include_features=include_features,
                 include_canonical=include_canonical,
-                refresh=False,
+                refresh=requested_refresh,
             )
             response_payload["lookup"] = {
                 "input_type": lookup_type,

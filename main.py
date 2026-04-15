@@ -19,6 +19,8 @@ from Dashboardbackend.app.services.stream_manager import stream_manager
 
 from Riskpredictionmodel.api import scoring_api as risk_scoring_api
 
+risk_scoring_api.score_broadcaster.set_stream_manager(stream_manager)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

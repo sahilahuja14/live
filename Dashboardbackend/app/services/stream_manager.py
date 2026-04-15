@@ -3,6 +3,7 @@ import json
 import os
 import time
 import hashlib
+import logging
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime, date
 from fastapi import WebSocket
@@ -10,6 +11,9 @@ from ..database import get_analytics_database, get_all_async_queryFor_databases
 from .query_builder import QueryBuilder
 from ..schemas.analytics import PivotConfig
 from .dashboard_stats import calculate_dashboard_stats, calculate_financial_stats
+
+
+logger = logging.getLogger(__name__)
 
 def json_serial(obj):
     """JSON serializer for objects not serializable by default json code"""
@@ -49,7 +53,7 @@ class StreamManager:
         await websocket.accept()
         self.active_connections.append(websocket)
         self.client_risk_configs[websocket] = set()
-        print(f"WebSocket connected. Total: {len(self.active_connections)}")
+        logger.info("WebSocket connected total=%d", len(self.active_connections))
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
@@ -62,7 +66,7 @@ class StreamManager:
                 del self.client_finance_configs[websocket]
             if websocket in self.client_risk_configs:
                 del self.client_risk_configs[websocket]
-            print(f"WebSocket disconnected. Total: {len(self.active_connections)}")
+            logger.info("WebSocket disconnected total=%d", len(self.active_connections))
 
     def configure_risk_runtime(self, refresh_callback: Callable[[], None] | None = None):
         self._risk_refresh_callback = refresh_callback
@@ -81,10 +85,10 @@ class StreamManager:
                 config_data = payload.get("config")
                 
                 if not widget_id or not config_data:
-                    print(f"Error: Missing widgetId or config in payload: {payload}")
+                    logger.warning("Missing widgetId or config in payload payload=%s", payload)
                     return
                 
-                print(f"Received Pivot Config from client for widget {widget_id}")
+                logger.info("Received pivot config widget_id=%s", widget_id)
                 
                 # Initialize nested dict if needed
                 if websocket not in self.client_configs:
@@ -104,7 +108,7 @@ class StreamManager:
                 
             elif msg_type == "SUBSCRIBE_DASHBOARD_STATS":
                 payload = data.get("payload", {})
-                print(f"Subscribed to Dashboard Stats: {payload}")
+                logger.info("Subscribed to dashboard stats payload=%s", payload)
                 self.client_stats_configs[websocket] = payload
                 
                 # Send Initial Stats
@@ -114,7 +118,7 @@ class StreamManager:
                 
             elif msg_type == "SUBSCRIBE_FINANCE_STATS":
                 payload = data.get("payload", {})
-                print(f"Subscribed to Finance Stats: {payload}")
+                logger.info("Subscribed to finance stats payload=%s", payload)
                 self.client_finance_configs[websocket] = payload
                 
                 # Send Initial Finance Stats
@@ -141,16 +145,16 @@ class StreamManager:
                 if self._risk_refresh_callback is not None:
                     asyncio.create_task(self._run_risk_refresh())
                 
-        except Exception as e:
-            print(f"Error handling client message: {e}")
+        except Exception:
+            logger.exception("Error handling client websocket message")
 
     async def _run_risk_refresh(self):
         if self._risk_refresh_callback is None:
             return
         try:
             await asyncio.to_thread(self._risk_refresh_callback)
-        except Exception as e:
-            print(f"Error running risk refresh: {e}")
+        except Exception:
+            logger.exception("Error running risk refresh")
 
     async def _run_stats_calculation(self, config: dict) -> dict:
         try:
@@ -166,9 +170,9 @@ class StreamManager:
                 shipment_type=shipment_type,
                 query_type=query_type
             )
-        except Exception as e:
-            print(f"Stats Calculation Error: {e}")
-            return {"error": str(e)}
+        except Exception as exc:
+            logger.exception("Stats calculation error")
+            return {"error": str(exc)}
 
     async def _run_finance_calculation(self, config: dict) -> dict:
         try:
@@ -179,9 +183,9 @@ class StreamManager:
                 range_param=range_param,
                 modes=modes
             )
-        except Exception as e:
-            print(f"Finance Calculation Error: {e}")
-            return {"error": str(e)}
+        except Exception as exc:
+            logger.exception("Finance calculation error")
+            return {"error": str(exc)}
 
     async def _run_aggregation(self, config: PivotConfig) -> dict:
         # Re-use the existing logic from analytics router, but calling it directly
@@ -194,10 +198,10 @@ class StreamManager:
              pipeline = self.qb.build_pipeline(config)
              
              # DEBUG: Log Pipeline
-             print(f"DEBUG: Pivot Config Rows: {[r.id for r in config.rows]}")
-             print(f"DEBUG: Pivot Config Columns: {[c.id for c in config.columns]}")
-             print(f"DEBUG: Pivot Config Values: {[v.fieldId for v in config.values]}")
-             print(f"DEBUG: Generated Pipeline Project Stage: {pipeline[-1] if pipeline else 'EMPTY'}")
+             logger.debug("Pivot config rows=%s", [r.id for r in config.rows])
+             logger.debug("Pivot config columns=%s", [c.id for c in config.columns])
+             logger.debug("Pivot config values=%s", [v.fieldId for v in config.values])
+             logger.debug("Generated pipeline tail=%s", pipeline[-1] if pipeline else "EMPTY")
              
              async def run_query(db):
                  cursor = await db.queries.aggregate(pipeline)
@@ -227,9 +231,9 @@ class StreamManager:
                 
              return {"data": flattened_results}
              
-        except Exception as e:
-            print(f"Aggregation Error: {e}")
-            return {"error": str(e), "data": []}
+        except Exception as exc:
+            logger.exception("Aggregation error")
+            return {"error": str(exc), "data": []}
 
     async def start_watching(self):
         if self.is_watching:
@@ -239,7 +243,7 @@ class StreamManager:
         
         # --- API SCHEDULING (Polling) ---
         self._watch_task = asyncio.create_task(self._api_scheduling_loop())
-        print(f"Started API Scheduling Loop (Polling every {self.POLL_INTERVAL_SECONDS}s)")
+        logger.info("Started API scheduling loop poll_interval_seconds=%d", self.POLL_INTERVAL_SECONDS)
 
     async def stop_watching(self):
         self.is_watching = False
@@ -250,26 +254,24 @@ class StreamManager:
             except asyncio.CancelledError:
                 pass
             
-        print("Stopped API Scheduling Loop")
+        logger.info("Stopped API scheduling loop")
 
     # --- API SCHEDULING (Polling) ---
     async def _api_scheduling_loop(self):
-        print(f"Starting scheduled polling of database every {self.POLL_INTERVAL_SECONDS} seconds...")
-        
-        # In the future, you could query the database for Max(updatedAt) here.
-        # For now, we will simply trigger the broadcasts on a schedule. 
-        # The caching logic in the broadcast functions handles deduplication.
+        logger.info("Starting scheduled polling poll_interval_seconds=%d", self.POLL_INTERVAL_SECONDS)
+        heartbeat_interval_seconds = 30
+        last_poll_ts = 0.0
         while self.is_watching:
             try:
                 if self.active_connections:
-                    if self._has_scheduled_poll_subscribers():
-                        await self._handle_change("scheduled_poll")
+                    now = time.time()
                     await self._broadcast_risk_heartbeat()
-            except Exception as e:
-                print(f"Error in API Scheduling Loop: {e}")
-            
-            # Sleep for the interval before checking again
-            await asyncio.sleep(self.POLL_INTERVAL_SECONDS)
+                    if self._has_scheduled_poll_subscribers() and (now - last_poll_ts) >= self.POLL_INTERVAL_SECONDS:
+                        last_poll_ts = now
+                        await self._handle_change("scheduled_poll")
+            except Exception:
+                logger.exception("Error in API scheduling loop")
+            await asyncio.sleep(heartbeat_interval_seconds)
 
     def _has_scheduled_poll_subscribers(self) -> bool:
         return bool(
@@ -280,7 +282,7 @@ class StreamManager:
 
     async def _handle_change(self, source: str):
         # Unified change handler for all collections
-        print(f"Detected change in {source}")
+        logger.info("Detected change source=%s", source)
         
         # Mark update as needed
         self._needs_update = True
@@ -306,7 +308,7 @@ class StreamManager:
                 if self._needs_update:
                     # Clear it before broadcasting (so new changes separate)
                     self._needs_update = False
-                    print(f"Broadcasting buffered updates...")
+                    logger.info("Broadcasting buffered updates")
                     await self._broadcast_dynamic_updates()
                     await self._broadcast_stats()
                     await self._broadcast_finance_stats()
@@ -340,8 +342,8 @@ class StreamManager:
                         config_obj = PivotConfig(**raw_config)
                         result = await self._run_aggregation(config_obj)
                         config_cache[config_hash] = result
-                    except Exception as e:
-                        print(f"Error executing config for widget {widget_id}: {e}")
+                    except Exception:
+                        logger.exception("Error executing config widget_id=%s", widget_id)
                         continue
                 
                 # Send Update with widgetId
@@ -354,8 +356,8 @@ class StreamManager:
                         }
                     }
                     await websocket.send_text(json.dumps(response, default=json_serial))
-                except Exception as e:
-                    print(f"Error sending dynamic update for widget {widget_id}: {e}")
+                except Exception:
+                    logger.exception("Error sending dynamic update widget_id=%s", widget_id)
 
     async def _broadcast_stats(self):
         # Broadcast Dashboard Stats to subscribed clients
@@ -377,8 +379,8 @@ class StreamManager:
                 try:
                     stats = await self._run_stats_calculation(stats_config)
                     stats_cache[config_hash] = stats
-                except Exception as e:
-                    print(f"Error calc stats for {stats_config}: {e}")
+                except Exception:
+                    logger.exception("Error calculating dashboard stats config=%s", stats_config)
                     continue
             
             # Send
@@ -388,8 +390,8 @@ class StreamManager:
                     "payload": stats
                 }
                 await websocket.send_text(json.dumps(response, default=json_serial))
-            except Exception as e:
-                print(f"Error sending stats update: {e}")
+            except Exception:
+                logger.exception("Error sending stats update")
 
     async def _broadcast_finance_stats(self):
         # Broadcast Finance Stats to subscribed clients
@@ -411,8 +413,8 @@ class StreamManager:
                 try:
                     stats = await self._run_finance_calculation(finance_config)
                     finance_cache[config_hash] = stats
-                except Exception as e:
-                    print(f"Error calc finance stats for {finance_config}: {e}")
+                except Exception:
+                    logger.exception("Error calculating finance stats config=%s", finance_config)
                     continue
             
             # Send
@@ -422,8 +424,8 @@ class StreamManager:
                     "payload": stats
                 }
                 await websocket.send_text(json.dumps(response, default=json_serial))
-            except Exception as e:
-                print(f"Error sending finance stats update: {e}")
+            except Exception:
+                logger.exception("Error sending finance stats update")
 
     async def _broadcast_risk_refresh_started(self, triggered_by: str = "auto_refresh"):
         await self._broadcast_risk_message(
@@ -471,23 +473,31 @@ class StreamManager:
         if not self.active_connections:
             return
 
-        customer_lookup: dict[tuple[str, str], dict] = {}
-        for record in snapshot.get("records", []):
-            customer_id = str(record.get("customer.customerId") or "").strip()
-            segment = str(record.get("shipmentDetails.queryFor") or record.get("segment") or "all").strip().lower()
-            if not customer_id:
-                continue
+        wanted: set[tuple[str, str]] = set()
+        for subscriptions in self.client_risk_configs.values():
+            wanted.update(subscriptions)
+        if not wanted:
+            return
 
-            risk_payload = {
+        try:
+            from Riskpredictionmodel.api.cache.customer_risk_store import CustomerRiskStore
+        except Exception:
+            logger.exception("Unable to import CustomerRiskStore for risk websocket updates")
+            return
+
+        store = CustomerRiskStore()
+        customer_lookup: dict[tuple[str, str], dict] = {}
+        for customer_id, segment in wanted:
+            record = store.load_customer_record(segment=segment, customer_id=customer_id)
+            if record is None:
+                continue
+            customer_lookup[(customer_id, segment)] = {
                 "pd": record.get("pd"),
                 "risk_band": record.get("risk_band"),
                 "approval": record.get("approval"),
             }
-            customer_lookup.setdefault((customer_id, segment), risk_payload)
-            customer_lookup.setdefault((customer_id, "all"), risk_payload)
 
-        for websocket in list(self.active_connections):
-            subscriptions = self.client_risk_configs.get(websocket, set())
+        for websocket, subscriptions in list(self.client_risk_configs.items()):
             for customer_id, segment in subscriptions:
                 risk_payload = customer_lookup.get((customer_id, segment))
                 if risk_payload is None:
@@ -507,8 +517,8 @@ class StreamManager:
                             default=json_serial,
                         )
                     )
-                except Exception as e:
-                    print(f"Error sending risk customer update: {e}")
+                except Exception:
+                    logger.exception("Error sending risk customer update customer_id=%s segment=%s", customer_id, segment)
 
     async def _broadcast_risk_heartbeat(self):
         if not self.active_connections:

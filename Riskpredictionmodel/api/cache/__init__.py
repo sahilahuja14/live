@@ -69,7 +69,7 @@ class ApiCache:
             scored_snapshot_retention_seconds=self.scored_snapshot_retention_seconds,
             model_key_loader=self._model_key,
             load_full_dataset=self._dataset_cache.load_full_dataset,
-            enrich_with_customer_history=self._dataset_cache.enrich_with_customer_history,
+            enrich_snapshot_with_customer_history=self._dataset_cache.enrich_snapshot_with_customer_history,
             resolve_threshold=self._resolve_threshold,
             broadcaster=self._broadcaster,
             persist_customer_portfolio=self._portfolio_cache.persist_customer_portfolio,

@@ -48,7 +48,7 @@ class SnapshotCache:
         scored_snapshot_retention_seconds: int,
         model_key_loader: Callable[[], str],
         load_full_dataset: Callable[[bool], pd.DataFrame],
-        enrich_with_customer_history: Callable[[pd.DataFrame, bool], pd.DataFrame],
+        enrich_snapshot_with_customer_history: Callable[[pd.DataFrame, bool], pd.DataFrame],
         resolve_threshold: Callable[[str], float | None],
         broadcaster: Any = None,
         persist_customer_portfolio: Callable[[str, str, pd.DataFrame], None] | None = None,
@@ -59,7 +59,7 @@ class SnapshotCache:
         self._scored_snapshot_retention_seconds = int(scored_snapshot_retention_seconds)
         self._model_key_loader = model_key_loader
         self._load_full_dataset = load_full_dataset
-        self._enrich_with_customer_history = enrich_with_customer_history
+        self._enrich_snapshot_with_customer_history = enrich_snapshot_with_customer_history
         self._resolve_threshold = resolve_threshold
         self._broadcaster = broadcaster
         self._persist_customer_portfolio = persist_customer_portfolio
@@ -127,7 +127,7 @@ class SnapshotCache:
             }
 
         # Score the full snapshot once, then apply per-segment approval thresholds.
-        enriched_full = self._enrich_with_customer_history(prepared_full, force_refresh=True)
+        enriched_full = self._enrich_snapshot_with_customer_history(prepared_full, force_refresh=True)
         scored = score_mongo_frame(
             enriched_full,
             history_df=enriched_full,

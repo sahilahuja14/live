@@ -24,31 +24,27 @@ def load_customer_portfolio_page_from_store(
     if refresh:
         api_cache.refresh(trigger=f"customer_list_refresh:{normalized_segment}")
 
-    total_segment_customers = api_cache.get_persisted_customer_portfolio_count(
+    filtered_summary = api_cache.get_persisted_customer_portfolio_summary(
         segment=normalized_segment,
-        search=None,
+        search=normalized_search,
     )
+    total_segment_customers = int(filtered_summary.get("customers") or 0)
     if total_segment_customers > 0:
         return {
             "segment_customer_count": total_segment_customers,
-            "filtered_summary": api_cache.get_persisted_customer_portfolio_summary(
-                segment=normalized_segment,
-                search=normalized_search,
-            ),
+            "filtered_summary": filtered_summary,
         }
 
     api_cache.refresh(trigger=f"customer_collection_bootstrap:{normalized_segment}")
-    warmed_segment_customers = api_cache.get_persisted_customer_portfolio_count(
+    warmed_summary = api_cache.get_persisted_customer_portfolio_summary(
         segment=normalized_segment,
-        search=None,
+        search=normalized_search,
     )
+    warmed_segment_customers = int(warmed_summary.get("customers") or 0)
     if warmed_segment_customers > 0:
         return {
             "segment_customer_count": warmed_segment_customers,
-            "filtered_summary": api_cache.get_persisted_customer_portfolio_summary(
-                segment=normalized_segment,
-                search=normalized_search,
-            ),
+            "filtered_summary": warmed_summary,
         }
 
     raise HTTPException(
@@ -111,17 +107,25 @@ def load_customer_summary_or_bootstrap(
     if warmed_summary:
         return warmed_summary
 
-    customer_service._load_customer_invoice_frame(
-        segment=normalized_segment,
-        customer_id=normalized_customer_id,
-        force_refresh=False,
-    )
+    full_df = api_cache.load_full_dataset(force_refresh=False)
+    if not full_df.empty and "customer.customerId" in full_df.columns:
+        exists = (
+            full_df["customer.customerId"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .eq(normalized_customer_id)
+            .any()
+        )
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"Customer '{normalized_customer_id}' not found.")
     raise HTTPException(
         status_code=503,
         detail=(
             "Customer risk profile is warming up. A refresh was triggered for "
             f"customer '{normalized_customer_id}' in segment '{normalized_segment}'. Retry shortly."
         ),
+        headers={"Retry-After": "30"},
     )
 
 

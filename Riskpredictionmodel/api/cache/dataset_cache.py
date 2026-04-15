@@ -189,9 +189,44 @@ class DatasetCache:
 
         return grouped
 
+    def fetch_all_customer_aggregates_from_frame(
+        self,
+        full_df: pd.DataFrame,
+        force_refresh: bool = False,
+    ) -> pd.DataFrame:
+        if full_df is None or full_df.empty:
+            return pd.DataFrame()
+
+        customer_ids = customer_ids_from_frame(full_df)
+        if not customer_ids:
+            return pd.DataFrame()
+
+        model_key = self._model_key_loader()
+        cache_key = (model_key, "__all_customers__")
+        now = time()
+        with self._lock:
+            cached = self._history_cache.get(cache_key)
+            if cached is not None:
+                cached_ts, cached_df = cached
+                if not force_refresh and (now - cached_ts) <= self._history_ttl_seconds:
+                    return cached_df.copy()
+
+        grouped = build_risk_main_customer_aggregates(full_df, customer_ids)
+        with self._lock:
+            self._history_cache[cache_key] = (now, grouped.copy())
+
+        return grouped
+
     def enrich_with_customer_history(self, df: pd.DataFrame, force_refresh: bool = False) -> pd.DataFrame:
         aggregates = self.fetch_customer_aggregates(
             customer_ids_from_frame(df),
+            force_refresh=force_refresh,
+        )
+        return merge_customer_history_aggregates(df, aggregates)
+
+    def enrich_snapshot_with_customer_history(self, df: pd.DataFrame, force_refresh: bool = False) -> pd.DataFrame:
+        aggregates = self.fetch_all_customer_aggregates_from_frame(
+            df,
             force_refresh=force_refresh,
         )
         return merge_customer_history_aggregates(df, aggregates)
